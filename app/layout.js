@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: "Springer Finanace",
-  description: "The future of finance made simple.",
+  description: "The future of financial accounting made simple.",
 };
 
 export default function RootLayout({ children }) {
