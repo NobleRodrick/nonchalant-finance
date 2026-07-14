@@ -75,37 +75,37 @@ export const howItWorksData = [
     icon: <BarChart3 className="h-8 w-8 text-blue-600" />,
     title: "2. Track Your Spending",
     description:
-      "Automatically categorize and track your transactions in real-time",
+      "Automatically categorize and track your transactions in real-time, get real-time insights and financial statements",
   },
   {
     icon: <PieChart className="h-8 w-8 text-blue-600" />,
     title: "3. Get Insights",
     description:
-      "Receive AI-powered insights and recommendations to optimize your finances",
+      "Receive AI-powered insights and recommendations to optimize your finances, and boost business productivity",
   },
 ];
 
 // Testimonials Data
 export const testimonialsData = [
   {
-    name: "Sarah Johnson",
+    name: "Talla Martin",
     role: "Small Business Owner",
-    image: "https://randomuser.me/api/portraits/women/75.jpg",
+    image: "https://api.dicebear.com/9.x/personas/svg?seed=Emily-Rodriguez",
     quote:
-      "Welth has transformed how I manage my business finances. The AI insights have helped me identify cost-saving opportunities I never knew existed.",
+      "Springer Finance has transformed how I manage my business finances. The AI insights have helped me identify cost-saving opportunities I never knew existed.",
   },
   {
-    name: "Michael Chen",
+    name: "Nkeng Evans",
     role: "Freelancer",
-    image: "https://randomuser.me/api/portraits/men/75.jpg",
+    image: "https://api.dicebear.com/9.x/personas/svg?seed=Emily-Rodriguez",
     quote:
       "The receipt scanning feature saves me hours each month. Now I can focus on my work instead of manual data entry and expense tracking.",
   },
   {
-    name: "Emily Rodriguez",
+    name: "Nkwenti Michael",
     role: "Financial Advisor",
-    image: "https://randomuser.me/api/portraits/women/74.jpg",
+    image: "https://api.dicebear.com/9.x/personas/svg?seed=Emily-Rodriguez",
     quote:
-      "I recommend Welth to all my clients. The multi-currency support and detailed analytics make it perfect for international investors.",
+      "I recommend Springer Finance to all my clients. The multi-currency support and detailed analytics make it perfect for international investors.",
   },
 ];
