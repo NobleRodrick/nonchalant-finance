@@ -1,10 +1,4 @@
-import {
-  SignedIn,
-  SignedOut,
-  SignInButton,
-  SignUpButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "./ui/button";
@@ -27,7 +21,7 @@ const Header = async () => {
         </Link>
 
         <div className="flex items-center space-x-4">
-          <SignedIn>
+          <Show when="signed-in">
             <Link
               href={"/dashboard"}
               className="text-gray-600 hover:text-blue-600 flex items-center gap-2"
@@ -44,9 +38,9 @@ const Header = async () => {
                 <span className="hidden md:inline">Add Transaction</span>
               </Button>
             </Link>
-          </SignedIn>
+          </Show>
 
-          <SignedOut>
+          <Show when="signed-out">
             <SignInButton forceRedirectUrl="/dashboard">
               <Button variant="outline">Login</Button>
             </SignInButton>
@@ -55,8 +49,8 @@ const Header = async () => {
                 Sign Up
               </button>
             </SignUpButton>
-          </SignedOut>
-          <SignedIn>
+          </Show>
+          <Show when="signed-in">
             <UserButton
               appearance={{
                 elements: {
@@ -64,7 +58,7 @@ const Header = async () => {
                 },
               }}
             />
-          </SignedIn>
+          </Show>
         </div>
       </nav>
     </div>
