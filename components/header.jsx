@@ -45,7 +45,7 @@ const Header = async () => {
               <Button variant="outline">Login</Button>
             </SignInButton>
             <SignUpButton>
-              <button className="bg-[#6c47ff] text-ceramic-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
+              <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer select-none transition-all duration-200 ease-out hover:bg-[#5a39d6] hover:shadow-md hover:-translate-y-px active:translate-y-0 active:scale-[0.97] active:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6c47ff]/50">
                 Sign Up
               </button>
             </SignUpButton>
