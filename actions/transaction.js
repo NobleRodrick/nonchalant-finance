@@ -229,8 +229,11 @@ export async function getUserTransactions(query = {}) {
 
 // Scan Receipt
 export async function scanReceipt(file) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
 
     // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
@@ -271,21 +274,37 @@ export async function scanReceipt(file) {
     const text = response.text();
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
 
+    let data;
     try {
-      const data = JSON.parse(cleanedText);
-      return {
-        amount: parseFloat(data.amount),
-        date: new Date(data.date),
-        description: data.description,
-        category: data.category,
-        merchantName: data.merchantName,
-      };
+      data = JSON.parse(cleanedText);
     } catch (parseError) {
       console.error("Error parsing JSON response:", parseError);
       throw new Error("Invalid response format from Gemini");
     }
+
+    // The model returns an empty object when the image is not a receipt
+    const amount = parseFloat(data?.amount);
+    const date = new Date(data?.date);
+    if (isNaN(amount) || isNaN(date.getTime())) {
+      throw new Error(
+        "Could not read a receipt from this image. Please try a clearer photo of a receipt."
+      );
+    }
+
+    return {
+      amount,
+      date,
+      description: data.description,
+      category: data.category,
+      merchantName: data.merchantName,
+    };
   } catch (error) {
     console.error("Error scanning receipt:", error);
+    // Keep the user-facing message for images that aren't receipts;
+    // hide internal API errors behind a generic message.
+    if (error.message?.startsWith("Could not read a receipt")) {
+      throw error;
+    }
     throw new Error("Failed to scan receipt");
   }
 }
