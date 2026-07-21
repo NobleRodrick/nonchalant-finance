@@ -33,8 +33,9 @@ const HeroSection = () => {
           Manage Your Finances <br /> with Intelligence
         </h1>
         <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-          An AI-powered financial management platform that helps you track,
-          analyze, and optimize your spending with real-time insights.
+          Snap a receipt, set a budget, download a balance sheet. Springer
+          Finance turns everyday transactions into real income statements, cash
+          flow reports, and a credit health score that moves as you spend.
         </p>
         <div className="flex justify-center space-x-4">
           <Link href="/dashboard">
