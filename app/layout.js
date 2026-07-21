@@ -8,7 +8,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
   title: "Springer Finance",
-  description: "The future of financial accounting made simple.",
+  description:
+    "Turn everyday transactions into income statements, balance sheets, and cash flow reports. With AI receipt scanning, budgets, and a live credit health score.",
 };
 
 export default function RootLayout({ children }) {
