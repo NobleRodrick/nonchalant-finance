@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import Link from "next/link";
 import { updateDefaultAccount } from "@/actions/account";
+import { formatCurrency } from "@/lib/currency";
 import { toast } from "sonner";
 
 export function AccountCard({ account }) {
@@ -64,7 +65,7 @@ export function AccountCard({ account }) {
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold">
-            ${parseFloat(balance).toFixed(2)}
+            {formatCurrency(balance)}
           </div>
           <p className="text-xs text-muted-foreground">
             {type.charAt(0) + type.slice(1).toLowerCase()} Account

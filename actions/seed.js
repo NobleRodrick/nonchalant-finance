@@ -30,7 +30,8 @@ const CATEGORIES = {
 
 // Helper to generate random amount within a range
 function getRandomAmount(min, max) {
-  return Number((Math.random() * (max - min) + min).toFixed(2));
+  // CFA francs have no subunit, so seed whole amounts.
+  return Math.round(Math.random() * (max - min) + min);
 }
 
 // Helper to get random category with amount

@@ -242,7 +242,7 @@ export async function scanReceipt(file) {
 
     const prompt = `
       Analyze this receipt image and extract the following information in JSON format:
-      - Total amount (just the number)
+      - Total amount (just the number, in CFA francs - do not convert currencies)
       - Date (in ISO format)
       - Description or items purchased (brief summary)
       - Merchant/store name

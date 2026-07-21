@@ -4,6 +4,7 @@ import { BarLoader } from "react-spinners";
 import { TransactionTable } from "../_components/transaction-table";
 import { notFound } from "next/navigation";
 import { AccountChart } from "../_components/account-chart";
+import { formatCurrency } from "@/lib/currency";
 
 export default async function AccountPage({ params }) {
   const { id } = await params;
@@ -30,7 +31,7 @@ export default async function AccountPage({ params }) {
 
         <div className="text-right pb-2">
           <div className="text-xl sm:text-2xl font-bold">
-            ${parseFloat(account.balance).toFixed(2)}
+            {formatCurrency(account.balance)}
           </div>
           <p className="text-sm text-muted-foreground">
             {account._count.transactions} Transactions

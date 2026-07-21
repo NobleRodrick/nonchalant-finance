@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { formatCurrency } from "@/lib/currency";
 import { 
   Award, 
   FileText, 
@@ -750,12 +751,12 @@ export function FinancialInsights({ accounts, transactions }) {
                             {Object.entries(financialData.incomeByCategory).map(([cat, val]) => (
                               <tr key={cat}>
                                 <td className="py-1 pl-4 text-slate-700">{cat}</td>
-                                <td className="py-1 text-right text-slate-700">${val.toFixed(2)}</td>
+                                <td className="py-1 text-right text-slate-700">{formatCurrency(val)}</td>
                               </tr>
                             ))}
                             <tr className="font-semibold bg-slate-50 border-t">
                               <td className="py-1.5 pl-2 text-slate-800">Total Revenue</td>
-                              <td className="py-1.5 text-right text-slate-800">${financialData.totalIncome.toFixed(2)}</td>
+                              <td className="py-1.5 text-right text-slate-800">{formatCurrency(financialData.totalIncome)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -769,12 +770,12 @@ export function FinancialInsights({ accounts, transactions }) {
                             {Object.entries(financialData.expenseByCategory).map(([cat, val]) => (
                               <tr key={cat}>
                                 <td className="py-1 pl-4 text-slate-700">{cat}</td>
-                                <td className="py-1 text-right text-slate-700">${val.toFixed(2)}</td>
+                                <td className="py-1 text-right text-slate-700">{formatCurrency(val)}</td>
                               </tr>
                             ))}
                             <tr className="font-semibold bg-slate-50 border-t">
                               <td className="py-1.5 pl-2 text-slate-800">Total Expenses</td>
-                              <td className="py-1.5 text-right text-slate-800">${financialData.totalExpense.toFixed(2)}</td>
+                              <td className="py-1.5 text-right text-slate-800">{formatCurrency(financialData.totalExpense)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -785,7 +786,7 @@ export function FinancialInsights({ accounts, transactions }) {
                         <tbody>
                           <tr className="font-bold text-base bg-sky-50 border-t-2 border-b-4 border-double border-sky-600 text-sky-900">
                             <td className="py-2.5 pl-2">Net Profit / (Loss)</td>
-                            <td className="py-2.5 text-right">${financialData.netIncome.toFixed(2)}</td>
+                            <td className="py-2.5 text-right">{formatCurrency(financialData.netIncome)}</td>
                           </tr>
                         </tbody>
                       </table>
@@ -814,12 +815,12 @@ export function FinancialInsights({ accounts, transactions }) {
                             {financialData.assetAccounts.map(a => (
                               <tr key={a.name}>
                                 <td className="py-1 pl-4 text-slate-700">{a.name} ({a.type})</td>
-                                <td className="py-1 text-right text-slate-700">${a.balance.toFixed(2)}</td>
+                                <td className="py-1 text-right text-slate-700">{formatCurrency(a.balance)}</td>
                               </tr>
                             ))}
                             <tr className="font-semibold bg-slate-50 border-t">
                               <td className="py-1.5 pl-2 text-slate-800">Total Assets</td>
-                              <td className="py-1.5 text-right text-slate-800">${financialData.totalAssets.toFixed(2)}</td>
+                              <td className="py-1.5 text-right text-slate-800">{formatCurrency(financialData.totalAssets)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -832,11 +833,11 @@ export function FinancialInsights({ accounts, transactions }) {
                           <tbody>
                             <tr>
                               <td className="py-1 pl-4 text-slate-500 italic">No Liability Accounts Recorded (Cash Basis)</td>
-                              <td className="py-1 text-right text-slate-700">$0.00</td>
+                              <td className="py-1 text-right text-slate-700">{formatCurrency(0)}</td>
                             </tr>
                             <tr className="font-semibold bg-slate-50 border-t">
                               <td className="py-1.5 pl-2 text-slate-800">Total Liabilities</td>
-                              <td className="py-1.5 text-right text-slate-800">$0.00</td>
+                              <td className="py-1.5 text-right text-slate-800">{formatCurrency(0)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -849,11 +850,11 @@ export function FinancialInsights({ accounts, transactions }) {
                           <tbody>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Retained Wealth Balance</td>
-                              <td className="py-1 text-right text-slate-700">${financialData.netWorth.toFixed(2)}</td>
+                              <td className="py-1 text-right text-slate-700">{formatCurrency(financialData.netWorth)}</td>
                             </tr>
                             <tr className="font-bold text-base bg-sky-50 border-t-2 border-b-4 border-double border-sky-600 text-sky-900">
                               <td className="py-2.5 pl-2">Total Liabilities & Equity</td>
-                              <td className="py-2.5 text-right">${financialData.netWorth.toFixed(2)}</td>
+                              <td className="py-2.5 text-right">{formatCurrency(financialData.netWorth)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -881,15 +882,15 @@ export function FinancialInsights({ accounts, transactions }) {
                           <tbody>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Operating Inflows (Revenue/Receipts)</td>
-                              <td className="py-1 text-right text-slate-700">${financialData.cashFlow.opInflow.toFixed(2)}</td>
+                              <td className="py-1 text-right text-slate-700">{formatCurrency(financialData.cashFlow.opInflow)}</td>
                             </tr>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Operating Outflows (Payments/Costs)</td>
-                              <td className="py-1 text-right text-slate-700">(${financialData.cashFlow.opOutflow.toFixed(2)})</td>
+                              <td className="py-1 text-right text-slate-700">({formatCurrency(financialData.cashFlow.opOutflow)})</td>
                             </tr>
                             <tr className="font-semibold text-slate-800 border-t">
                               <td className="py-1 pl-2">Net Cash provided by Operating Activities</td>
-                              <td className="py-1 text-right">${financialData.cashFlow.netOpCash.toFixed(2)}</td>
+                              <td className="py-1 text-right">{formatCurrency(financialData.cashFlow.netOpCash)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -902,15 +903,15 @@ export function FinancialInsights({ accounts, transactions }) {
                           <tbody>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Inflows from Investments / Asset Liquidations</td>
-                              <td className="py-1 text-right text-slate-700">${financialData.cashFlow.invInflow.toFixed(2)}</td>
+                              <td className="py-1 text-right text-slate-700">{formatCurrency(financialData.cashFlow.invInflow)}</td>
                             </tr>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Outflows for Capital Investments / Savings Transfers</td>
-                              <td className="py-1 text-right text-slate-700">(${financialData.cashFlow.invOutflow.toFixed(2)})</td>
+                              <td className="py-1 text-right text-slate-700">({formatCurrency(financialData.cashFlow.invOutflow)})</td>
                             </tr>
                             <tr className="font-semibold text-slate-800 border-t">
                               <td className="py-1 pl-2">Net Cash provided by Investing Activities</td>
-                              <td className="py-1 text-right">${financialData.cashFlow.netInvCash.toFixed(2)}</td>
+                              <td className="py-1 text-right">{formatCurrency(financialData.cashFlow.netInvCash)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -923,15 +924,15 @@ export function FinancialInsights({ accounts, transactions }) {
                           <tbody>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Inflows from Loans / Financing Receipts</td>
-                              <td className="py-1 text-right text-slate-700">${financialData.cashFlow.finInflow.toFixed(2)}</td>
+                              <td className="py-1 text-right text-slate-700">{formatCurrency(financialData.cashFlow.finInflow)}</td>
                             </tr>
                             <tr>
                               <td className="py-1 pl-4 text-slate-700">Outflows for Loan Repayments / Debt Servicing</td>
-                              <td className="py-1 text-right text-slate-700">(${financialData.cashFlow.finOutflow.toFixed(2)})</td>
+                              <td className="py-1 text-right text-slate-700">({formatCurrency(financialData.cashFlow.finOutflow)})</td>
                             </tr>
                             <tr className="font-semibold text-slate-800 border-t">
                               <td className="py-1 pl-2">Net Cash provided by Financing Activities</td>
-                              <td className="py-1 text-right">${financialData.cashFlow.netFinCash.toFixed(2)}</td>
+                              <td className="py-1 text-right">{formatCurrency(financialData.cashFlow.netFinCash)}</td>
                             </tr>
                           </tbody>
                         </table>
@@ -944,15 +945,15 @@ export function FinancialInsights({ accounts, transactions }) {
                           <tbody>
                             <tr>
                               <td className="py-1 pl-2 text-slate-700">Net Increase / (Decrease) in Cash</td>
-                              <td className="py-1 text-right text-slate-700 font-medium">${financialData.cashFlow.netChangeInCash.toFixed(2)}</td>
+                              <td className="py-1 text-right text-slate-700 font-medium">{formatCurrency(financialData.cashFlow.netChangeInCash)}</td>
                             </tr>
                             <tr>
                               <td className="py-1 pl-2 text-slate-700">Beginning Cash Balance</td>
-                              <td className="py-1 text-right text-slate-700">${financialData.cashFlow.beginningCash.toFixed(2)}</td>
+                              <td className="py-1 text-right text-slate-700">{formatCurrency(financialData.cashFlow.beginningCash)}</td>
                             </tr>
                             <tr className="font-bold text-base bg-sky-50 border-t-2 border-b-4 border-double border-sky-600 text-sky-900">
                               <td className="py-2.5 pl-2">Ending Cash Balance</td>
-                              <td className="py-2.5 text-right">${financialData.cashFlow.endingCash.toFixed(2)}</td>
+                              <td className="py-2.5 text-right">{formatCurrency(financialData.cashFlow.endingCash)}</td>
                             </tr>
                           </tbody>
                         </table>
