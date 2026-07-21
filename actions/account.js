@@ -69,10 +69,10 @@ export async function bulkDeleteTransactions(transactionIds) {
 
     // Group transactions by account to update balances
     const accountBalanceChanges = transactions.reduce((acc, transaction) => {
-      const change =
-        transaction.type === "EXPENSE"
-          ? transaction.amount
-          : -transaction.amount;
+      // amount is a Prisma Decimal; convert to a number first so the running
+      // total adds up instead of string-concatenating via Decimal.valueOf().
+      const amount = transaction.amount.toNumber();
+      const change = transaction.type === "EXPENSE" ? amount : -amount;
       acc[transaction.accountId] = (acc[transaction.accountId] || 0) + change;
       return acc;
     }, {});
@@ -143,7 +143,7 @@ export async function updateDefaultAccount(accountId) {
     });
 
     revalidatePath("/dashboard");
-    return { success: true, data: serializeTransaction(account) };
+    return { success: true, data: serializeDecimal(account) };
   } catch (error) {
     return { success: false, error: error.message };
   }
