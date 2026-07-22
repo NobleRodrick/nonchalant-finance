@@ -227,6 +227,9 @@ export async function getUserTransactions(query = {}) {
   }
 }
 
+const NOT_A_RECEIPT =
+  "Could not read a receipt from this image. Please try a clearer photo of a receipt.";
+
 // Scan Receipt
 export async function scanReceipt(file) {
   const { userId } = await auth();
@@ -242,7 +245,8 @@ export async function scanReceipt(file) {
 
     const prompt = `
       Analyze this receipt image and extract the following information in JSON format:
-      - Total amount (just the number, in CFA francs - do not convert currencies)
+      - Total amount (just the number, with no currency symbol or thousands
+        separators; do not convert between currencies)
       - Date (in ISO format)
       - Description or items purchased (brief summary)
       - Merchant/store name
@@ -274,38 +278,38 @@ export async function scanReceipt(file) {
     const text = response.text();
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
 
+    // Failures below are returned rather than thrown: Next.js strips the
+    // message from errors thrown in a Server Action in production builds and
+    // replaces it with an opaque digest, so the user would never see why.
     let data;
     try {
       data = JSON.parse(cleanedText);
-    } catch (parseError) {
-      console.error("Error parsing JSON response:", parseError);
-      throw new Error("Invalid response format from Gemini");
+    } catch {
+      console.error("Receipt scan: model response was not valid JSON:", cleanedText);
+      return { success: false, error: NOT_A_RECEIPT };
     }
 
-    // The model returns an empty object when the image is not a receipt
+    // The model returns an empty object when the image is not a receipt.
     const amount = parseFloat(data?.amount);
     const date = new Date(data?.date);
     if (isNaN(amount) || isNaN(date.getTime())) {
-      throw new Error(
-        "Could not read a receipt from this image. Please try a clearer photo of a receipt."
-      );
+      console.error("Receipt scan: unusable amount/date. Model returned:", cleanedText);
+      return { success: false, error: NOT_A_RECEIPT };
     }
 
     return {
-      amount,
-      date,
-      description: data.description,
-      category: data.category,
-      merchantName: data.merchantName,
+      success: true,
+      data: {
+        amount,
+        date,
+        description: data.description,
+        category: data.category,
+        merchantName: data.merchantName,
+      },
     };
   } catch (error) {
     console.error("Error scanning receipt:", error);
-    // Keep the user-facing message for images that aren't receipts;
-    // hide internal API errors behind a generic message.
-    if (error.message?.startsWith("Could not read a receipt")) {
-      throw error;
-    }
-    throw new Error("Failed to scan receipt");
+    return { success: false, error: "Failed to scan receipt. Please try again." };
   }
 }
 

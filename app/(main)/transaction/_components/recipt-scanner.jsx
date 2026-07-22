@@ -13,7 +13,7 @@ export function ReceiptScanner({ onScanComplete }) {
   const {
     loading: scanReceiptLoading,
     fn: scanReceiptFn,
-    data: scannedData,
+    data: scanResult,
   } = useFetch(scanReceipt);
 
   const handleReceiptScan = async (file) => {
@@ -26,11 +26,15 @@ export function ReceiptScanner({ onScanComplete }) {
   };
 
   useEffect(() => {
-    if (scannedData && !scanReceiptLoading) {
-      onScanComplete(scannedData);
+    if (!scanResult || scanReceiptLoading) return;
+
+    if (scanResult.success) {
+      onScanComplete(scanResult.data);
       toast.success("Receipt scanned successfully");
+    } else {
+      toast.error(scanResult.error);
     }
-  }, [scanReceiptLoading, scannedData]);
+  }, [scanReceiptLoading, scanResult]);
 
   return (
     <div className="flex items-center gap-4">
