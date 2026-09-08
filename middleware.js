@@ -23,24 +23,28 @@ export async function middleware(req) {
   const accessToken = req.cookies.get("sf_access_token")?.value;
   const refreshToken = req.cookies.get("sf_refresh_token")?.value;
 
-  let isValidSession = false;
+  let hasValidAccessToken = false;
+  let hasRefreshToken = false;
 
   if (accessToken) {
     try {
       await jwtVerify(accessToken, JWT_SECRET);
-      isValidSession = true;
+      hasValidAccessToken = true;
     } catch {
-      // Access token expired, check if refresh token exists
-      isValidSession = !!refreshToken;
-    }
-  } else if (refreshToken) {
-    try {
-      await jwtVerify(refreshToken, JWT_SECRET);
-      isValidSession = true;
-    } catch {
-      isValidSession = false;
+      // Let getCurrentUser validate the refresh token and issue a new access token.
     }
   }
+
+  if (refreshToken) {
+    try {
+      await jwtVerify(refreshToken, JWT_SECRET);
+      hasRefreshToken = true;
+    } catch {
+      hasRefreshToken = false;
+    }
+  }
+
+  const canReachProtectedRoute = hasValidAccessToken || hasRefreshToken;
 
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix)
@@ -48,14 +52,15 @@ export async function middleware(req) {
   const isAuthRoute = AUTH_ROUTES.some((route) => pathname === route);
 
   // If visiting protected route without valid session, redirect to /login
-  if (isProtected && !isValidSession) {
+  if (isProtected && !canReachProtectedRoute) {
     const url = new URL("/login", req.url);
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 
-  // If already logged in and visiting /login or /register, redirect to /dashboard
-  if (isAuthRoute && isValidSession) {
+  // Only redirect auth pages when the short-lived access token is valid. A stale
+  // refresh cookie must not send the browser back into a login/dashboard loop.
+  if (isAuthRoute && hasValidAccessToken) {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
