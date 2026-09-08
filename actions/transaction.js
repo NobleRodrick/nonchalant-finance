@@ -1,118 +1,112 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/prisma";
+import { getCurrentUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import aj from "@/lib/arcjet";
-import { request } from "@arcjet/next";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 const serializeAmount = (obj) => ({
   ...obj,
-  amount: obj.amount.toNumber(),
+  amount: Number(obj.amount),
 });
 
 // Create Transaction
 export async function createTransaction(data) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+    if (!user.organizationId) throw new Error("User has no associated organization");
 
-    // Get request data for ArcJet
-    const req = await request();
+    // Enforce employee department scoping
+    let targetDepartmentId = data.departmentId;
+    if (user.role !== "ADMIN" && user.departmentId) {
+      targetDepartmentId = user.departmentId;
+    }
 
-    // Check rate limit
-    const decision = await aj.protect(req, {
-      userId,
-      requested: 1, // Specify how many tokens to consume
-    });
+    if (!targetDepartmentId) {
+      // If admin didn't select, try finding the first department in the org
+      const defaultDept = await db.department.findFirst({
+        where: { organizationId: user.organizationId },
+      });
+      targetDepartmentId = defaultDept?.id || null;
+    }
 
-    if (decision.isDenied()) {
-      if (decision.reason.isRateLimit()) {
-        const { remaining, reset } = decision.reason;
-        console.error({
-          code: "RATE_LIMIT_EXCEEDED",
-          details: {
-            remaining,
-            resetInSeconds: reset,
-          },
-        });
-
-        throw new Error("Too many requests. Please try again later.");
+    let account = null;
+    if (data.accountId) {
+      account = await db.account.findFirst({
+        where: { id: data.accountId, organizationId: user.organizationId },
+      });
+      if (!account) throw new Error("Invalid account for this organization");
+      if (
+        user.role !== "ADMIN" &&
+        user.departmentId &&
+        account.departmentId &&
+        account.departmentId !== user.departmentId
+      ) {
+        throw new Error("Account is not in your authorized department");
       }
-
-      throw new Error("Request blocked");
     }
 
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-    });
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    const account = await db.account.findUnique({
-      where: {
-        id: data.accountId,
-        userId: user.id,
-      },
-    });
-
-    if (!account) {
-      throw new Error("Account not found");
-    }
-
-    // Calculate new balance
-    const balanceChange = data.type === "EXPENSE" ? -data.amount : data.amount;
-    const newBalance = account.balance.toNumber() + balanceChange;
-
-    // Create transaction and update account balance
     const transaction = await db.$transaction(async (tx) => {
       const newTransaction = await tx.transaction.create({
         data: {
-          ...data,
+          type: data.type,
+          amount: parseFloat(data.amount),
+          description: data.description || "",
+          category: data.category,
+          date: data.date ? new Date(data.date) : new Date(),
+          receiptUrl: data.receiptUrl || null,
+          organizationId: user.organizationId,
+          departmentId: targetDepartmentId,
           userId: user.id,
-          nextRecurringDate:
-            data.isRecurring && data.recurringInterval
-              ? calculateNextRecurringDate(data.date, data.recurringInterval)
-              : null,
+          accountId: data.accountId || null,
         },
       });
 
-      await tx.account.update({
-        where: { id: data.accountId },
-        data: { balance: newBalance },
-      });
+      // If an account was specified, update balance
+      if (data.accountId && account) {
+        const balanceChange = data.type === "EXPENSE" ? -parseFloat(data.amount) : parseFloat(data.amount);
+        await tx.account.update({
+          where: { id: data.accountId },
+          data: { balance: { increment: balanceChange } },
+        });
+      }
 
       return newTransaction;
     });
 
     revalidatePath("/dashboard");
-    revalidatePath(`/account/${transaction.accountId}`);
+    revalidatePath("/reports");
 
     return { success: true, data: serializeAmount(transaction) };
   } catch (error) {
+    console.error("Create transaction error:", error);
     throw new Error(error.message);
   }
 }
 
 export async function getTransaction(id) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
+  const whereClause = {
+    id,
+    organizationId: user.organizationId,
+  };
 
-  if (!user) throw new Error("User not found");
+  if (user.role !== "ADMIN" && user.departmentId) {
+    whereClause.departmentId = user.departmentId;
+  }
 
-  const transaction = await db.transaction.findUnique({
-    where: {
-      id,
-      userId: user.id,
+  const transaction = await db.transaction.findFirst({
+    where: whereClause,
+    include: {
+      department: true,
+      user: {
+        select: { id: true, name: true, email: true },
+      },
     },
   });
 
@@ -123,62 +117,39 @@ export async function getTransaction(id) {
 
 export async function updateTransaction(id, data) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
 
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-    });
-
-    if (!user) throw new Error("User not found");
-
-    // Get original transaction to calculate balance change
     const originalTransaction = await db.transaction.findUnique({
       where: {
         id,
-        userId: user.id,
-      },
-      include: {
-        account: true,
+        organizationId: user.organizationId,
       },
     });
 
     if (!originalTransaction) throw new Error("Transaction not found");
 
-    // Calculate balance changes
-    const oldBalanceChange =
-      originalTransaction.type === "EXPENSE"
-        ? -originalTransaction.amount.toNumber()
-        : originalTransaction.amount.toNumber();
+    if (user.role !== "ADMIN" && user.departmentId) {
+      if (originalTransaction.departmentId !== user.departmentId) {
+        throw new Error("Unauthorized to edit this transaction");
+      }
+    }
 
-    const newBalanceChange =
-      data.type === "EXPENSE" ? -data.amount : data.amount;
+    const targetDepartmentId =
+      user.role === "ADMIN"
+        ? data.departmentId || originalTransaction.departmentId
+        : user.departmentId || originalTransaction.departmentId;
 
-    const netBalanceChange = newBalanceChange - oldBalanceChange;
-
-    // Update transaction and account balance in a transaction
     const transaction = await db.$transaction(async (tx) => {
       const updated = await tx.transaction.update({
-        where: {
-          id,
-          userId: user.id,
-        },
+        where: { id },
         data: {
-          ...data,
-          nextRecurringDate:
-            data.isRecurring && data.recurringInterval
-              ? calculateNextRecurringDate(data.date, data.recurringInterval)
-              : null,
-        },
-      });
-
-      // Update account balance
-      await tx.account.update({
-        where: { id: data.accountId },
-        data: {
-          balance: {
-            increment: netBalanceChange,
-          },
+          type: data.type,
+          amount: parseFloat(data.amount),
+          description: data.description || "",
+          category: data.category,
+          date: data.date ? new Date(data.date) : new Date(),
+          departmentId: targetDepartmentId,
         },
       });
 
@@ -186,7 +157,7 @@ export async function updateTransaction(id, data) {
     });
 
     revalidatePath("/dashboard");
-    revalidatePath(`/account/${data.accountId}`);
+    revalidatePath("/reports");
 
     return { success: true, data: serializeAmount(transaction) };
   } catch (error) {
@@ -194,34 +165,30 @@ export async function updateTransaction(id, data) {
   }
 }
 
-// Get User Transactions
 export async function getUserTransactions(query = {}) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
 
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-    });
+    const whereClause = {
+      organizationId: user.organizationId,
+      ...query,
+    };
 
-    if (!user) {
-      throw new Error("User not found");
+    if (user.role !== "ADMIN" && user.departmentId) {
+      whereClause.departmentId = user.departmentId;
     }
 
     const transactions = await db.transaction.findMany({
-      where: {
-        userId: user.id,
-        ...query,
-      },
+      where: whereClause,
       include: {
-        account: true,
+        department: true,
+        user: { select: { name: true, email: true } },
       },
-      orderBy: {
-        date: "desc",
-      },
+      orderBy: { date: "desc" },
     });
 
-    return { success: true, data: transactions };
+    return { success: true, data: transactions.map(serializeAmount) };
   } catch (error) {
     throw new Error(error.message);
   }
@@ -230,27 +197,24 @@ export async function getUserTransactions(query = {}) {
 const NOT_A_RECEIPT =
   "Could not read a receipt from this image. Please try a clearer photo of a receipt.";
 
-// Scan Receipt
+// Scan Receipt with Gemini AI
 export async function scanReceipt(file) {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
 
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
 
-    // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
-    // Convert ArrayBuffer to Base64
     const base64String = Buffer.from(arrayBuffer).toString("base64");
 
     const prompt = `
-      Analyze this receipt image and extract the following information in JSON format:
-      - Total amount (just the number, with no currency symbol or thousands
-        separators; do not convert between currencies)
+      Analyze this receipt or invoice image and extract the following information in JSON format:
+      - Total amount (just the number, with no currency symbol or thousands separators; do not convert currencies)
       - Date (in ISO format)
       - Description or items purchased (brief summary)
-      - Merchant/store name
-      - Suggested category (one of: housing,transportation,groceries,utilities,entertainment,food,shopping,healthcare,education,personal,travel,insurance,gifts,bills,other-expense )
+      - Merchant/store/supplier name
+      - Suggested category (one of: housing,transportation,groceries,utilities,entertainment,food,shopping,healthcare,education,personal,travel,insurance,gifts,bills,inventory,supplies,maintenance,other-expense)
       
       Only respond with valid JSON in this exact format:
       {
@@ -261,7 +225,7 @@ export async function scanReceipt(file) {
         "category": "string"
       }
 
-      If its not a recipt, return an empty object
+      If it's not a receipt or invoice, return an empty object
     `;
 
     const result = await model.generateContent([
@@ -278,9 +242,6 @@ export async function scanReceipt(file) {
     const text = response.text();
     const cleanedText = text.replace(/```(?:json)?\n?/g, "").trim();
 
-    // Failures below are returned rather than thrown: Next.js strips the
-    // message from errors thrown in a Server Action in production builds and
-    // replaces it with an opaque digest, so the user would never see why.
     let data;
     try {
       data = JSON.parse(cleanedText);
@@ -289,11 +250,9 @@ export async function scanReceipt(file) {
       return { success: false, error: NOT_A_RECEIPT };
     }
 
-    // The model returns an empty object when the image is not a receipt.
     const amount = parseFloat(data?.amount);
     const date = new Date(data?.date);
     if (isNaN(amount) || isNaN(date.getTime())) {
-      console.error("Receipt scan: unusable amount/date. Model returned:", cleanedText);
       return { success: false, error: NOT_A_RECEIPT };
     }
 
@@ -311,26 +270,4 @@ export async function scanReceipt(file) {
     console.error("Error scanning receipt:", error);
     return { success: false, error: "Failed to scan receipt. Please try again." };
   }
-}
-
-// Helper function to calculate next recurring date
-function calculateNextRecurringDate(startDate, interval) {
-  const date = new Date(startDate);
-
-  switch (interval) {
-    case "DAILY":
-      date.setDate(date.getDate() + 1);
-      break;
-    case "WEEKLY":
-      date.setDate(date.getDate() + 7);
-      break;
-    case "MONTHLY":
-      date.setMonth(date.getMonth() + 1);
-      break;
-    case "YEARLY":
-      date.setFullYear(date.getFullYear() + 1);
-      break;
-  }
-
-  return date;
 }

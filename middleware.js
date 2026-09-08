@@ -1,58 +1,62 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { jwtVerify } from "jose";
 
-const isProtectedRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/account(.*)",
-  "/transaction(.*)",
-]);
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || "springer-finance-super-secure-jwt-secret-key-2026"
+);
 
-// Keep middleware minimal and Edge-friendly: only Clerk here.
-// Arcjet is moved to a server API route (app/api/arcjet/route.js)
-// so it won't be bundled into the Edge Function.
-const clerk = clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
-  if (!userId && isProtectedRoute(req)) {
-    const { redirectToSignIn } = await auth();
-    return redirectToSignIn();
-  }
-});
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/onboarding",
+  "/organization",
+  "/reports",
+  "/transaction",
+  "/account",
+  "/profile",
+];
 
-// Compose Clerk middleware with a lightweight server-side Arcjet check.
-// The Arcjet check runs in a serverless function (`/api/arcjet`) so the
-// heavy Arcjet SDK is not bundled into the Edge Function. This middleware
-// will call the server route for protected routes and act on its decision.
-export default async function middleware(req, ev) {
-  // First run Clerk middleware (handles auth/redirects). If it returns a
-  // Response (like redirect to sign-in), return it immediately.
-  const clerkResponse = await clerk(req, ev);
-  if (clerkResponse) return clerkResponse;
+const AUTH_ROUTES = ["/login", "/register", "/sign-in", "/sign-up"];
 
-  // Only run Arcjet server-side check for protected routes to minimize calls.
-  try {
-    if (isProtectedRoute(req)) {
-      const url = new URL('/api/arcjet', req.url);
-      const res = await fetch(url.toString(), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          path: req.nextUrl.pathname,
-          method: req.method,
-          // Forward a few useful headers; server route can use them if needed
-          userAgent: req.headers.get('user-agent'),
-        }),
-      });
+export async function middleware(req) {
+  const { pathname } = req.nextUrl;
 
-      // Expect `{ block: true }` to indicate a blocked request. Default to
-      // allow when the server route doesn't provide a block decision.
-      const data = await res.json().catch(() => ({}));
-      if (data && data.block) {
-        return new NextResponse('Forbidden', { status: 403 });
-      }
+  const accessToken = req.cookies.get("sf_access_token")?.value;
+  const refreshToken = req.cookies.get("sf_refresh_token")?.value;
+
+  let isValidSession = false;
+
+  if (accessToken) {
+    try {
+      await jwtVerify(accessToken, JWT_SECRET);
+      isValidSession = true;
+    } catch {
+      // Access token expired, check if refresh token exists
+      isValidSession = !!refreshToken;
     }
-  } catch (err) {
-    // Fail-open: if the Arcjet server check errors, allow the request so we
-    // don't break user flows. This preserves app functionality.
+  } else if (refreshToken) {
+    try {
+      await jwtVerify(refreshToken, JWT_SECRET);
+      isValidSession = true;
+    } catch {
+      isValidSession = false;
+    }
+  }
+
+  const isProtected = PROTECTED_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix)
+  );
+  const isAuthRoute = AUTH_ROUTES.some((route) => pathname === route);
+
+  // If visiting protected route without valid session, redirect to /login
+  if (isProtected && !isValidSession) {
+    const url = new URL("/login", req.url);
+    url.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // If already logged in and visiting /login or /register, redirect to /dashboard
+  if (isAuthRoute && isValidSession) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
   return NextResponse.next();
@@ -60,9 +64,6 @@ export default async function middleware(req, ev) {
 
 export const config = {
   matcher: [
-    // Skip Next.js internals and all static files, unless found in search params
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // Always run for API routes
-    '/(api|trpc)(.*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

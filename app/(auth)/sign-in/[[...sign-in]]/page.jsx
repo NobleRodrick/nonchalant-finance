@@ -1,12 +1,5 @@
-import { SignIn } from '@clerk/nextjs'
-import React from 'react'
+import { redirect } from "next/navigation";
 
-const Page = () => {
-  return (
-    <div>
-      <SignIn />
-    </div>
-  )
+export default function SignInPage() {
+  redirect("/login");
 }
-
-export default Page

@@ -1,156 +1,209 @@
 "use server";
 
-import aj from "@/lib/arcjet";
 import { db } from "@/lib/prisma";
-import { request } from "@arcjet/next";
-import { auth } from "@clerk/nextjs/server";
+import { getCurrentUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
-const serializeTransaction = (obj) => {
+const serializeDecimal = (obj) => {
+  if (!obj) return obj;
   const serialized = { ...obj };
-  if (obj.balance) {
-    serialized.balance = obj.balance.toNumber();
+  if (obj.balance !== undefined && obj.balance !== null) {
+    serialized.balance = Number(obj.balance);
   }
-  if (obj.amount) {
-    serialized.amount = obj.amount.toNumber();
+  if (obj.amount !== undefined && obj.amount !== null) {
+    serialized.amount = Number(obj.amount);
   }
   return serialized;
 };
 
-export async function getUserAccounts() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+export async function getDashboardData(selectedDepartmentId = null) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
+  if (!user.organizationId) throw new Error("User has no associated organization");
 
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
+  if (user.role !== "ADMIN" && !user.departmentId) {
+    throw new Error("Your account is not assigned to a department. Contact your manager.");
+  }
+
+  let effectiveDeptId = selectedDepartmentId;
+  if (user.role !== "ADMIN" && user.departmentId) {
+    effectiveDeptId = user.departmentId;
+  }
+
+  const whereClause = {
+    organizationId: user.organizationId,
+  };
+
+  if (effectiveDeptId && effectiveDeptId !== "all") {
+    whereClause.departmentId = effectiveDeptId;
+  }
+
+  // Get all matching transactions
+  const transactions = await db.transaction.findMany({
+    where: whereClause,
+    include: {
+      department: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      },
+    },
+    orderBy: { date: "desc" },
   });
 
-  if (!user) {
-    throw new Error("User not found");
+  return transactions.map((t) => ({
+    ...serializeDecimal(t),
+    amount: Number(t.amount),
+  }));
+}
+
+export async function getUserAccounts() {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
+
+  if (user.role !== "ADMIN" && !user.departmentId) {
+    return [];
   }
 
   try {
     const accounts = await db.account.findMany({
-      where: { userId: user.id },
+      where: {
+        organizationId: user.organizationId,
+        ...(user.role !== "ADMIN" && user.departmentId
+          ? { departmentId: user.departmentId }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
+        department: true,
         _count: {
-          select: {
-            transactions: true,
-          },
+          select: { transactions: true },
         },
       },
     });
 
-    // Serialize accounts before sending to client
-    const serializedAccounts = accounts.map(serializeTransaction);
-
-    return serializedAccounts;
+    return accounts.map(serializeDecimal);
   } catch (error) {
-    console.error(error.message);
+    console.error("Error fetching accounts:", error.message);
+    return [];
   }
 }
 
 export async function createAccount(data) {
   try {
-    const { userId } = await auth();
-    if (!userId) throw new Error("Unauthorized");
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Unauthorized");
 
-    // Get request data for ArcJet
-    const req = await request();
-
-    // Check rate limit
-    const decision = await aj.protect(req, {
-      userId,
-      requested: 1, // Specify how many tokens to consume
-    });
-
-    if (decision.isDenied()) {
-      if (decision.reason.isRateLimit()) {
-        const { remaining, reset } = decision.reason;
-        console.error({
-          code: "RATE_LIMIT_EXCEEDED",
-          details: {
-            remaining,
-            resetInSeconds: reset,
-          },
-        });
-
-        throw new Error("Too many requests. Please try again later.");
-      }
-
-      throw new Error("Request blocked");
-    }
-
-    const user = await db.user.findUnique({
-      where: { clerkUserId: userId },
-    });
-
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Convert balance to float before saving
     const balanceFloat = parseFloat(data.balance);
     if (isNaN(balanceFloat)) {
       throw new Error("Invalid balance amount");
     }
 
-    // Check if this is the user's first account
     const existingAccounts = await db.account.findMany({
-      where: { userId: user.id },
+      where: { organizationId: user.organizationId },
     });
 
-    // If it's the first account, make it default regardless of user input
-    // If not, use the user's preference
-    const shouldBeDefault =
-      existingAccounts.length === 0 ? true : data.isDefault;
+    const shouldBeDefault = existingAccounts.length === 0 ? true : data.isDefault;
 
-    // If this account should be default, unset other default accounts
     if (shouldBeDefault) {
       await db.account.updateMany({
-        where: { userId: user.id, isDefault: true },
+        where: { organizationId: user.organizationId, isDefault: true },
         data: { isDefault: false },
       });
     }
 
-    // Create new account
     const account = await db.account.create({
       data: {
-        ...data,
+        name: data.name,
+        type: data.type,
         balance: balanceFloat,
+        organizationId: user.organizationId,
+        departmentId: data.departmentId || user.departmentId || null,
         userId: user.id,
-        isDefault: shouldBeDefault, // Override the isDefault based on our logic
+        isDefault: shouldBeDefault,
       },
     });
 
-    // Serialize the account before returning
-    const serializedAccount = serializeTransaction(account);
-
     revalidatePath("/dashboard");
-    return { success: true, data: serializedAccount };
+    return { success: true, data: serializeDecimal(account) };
   } catch (error) {
     throw new Error(error.message);
   }
 }
 
-export async function getDashboardData() {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
-
-  const user = await db.user.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  if (!user) {
-    throw new Error("User not found");
+export async function getExecutiveKpis() {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "ADMIN" || !user.organizationId) {
+    return null;
   }
 
-  // Get all user transactions
   const transactions = await db.transaction.findMany({
-    where: { userId: user.id },
+    where: { organizationId: user.organizationId },
+    include: { department: true },
     orderBy: { date: "desc" },
   });
 
-  return transactions.map(serializeTransaction);
+  const departments = await db.department.findMany({
+    where: { organizationId: user.organizationId },
+  });
+
+  let totalRevenue = 0;
+  let totalExpenses = 0;
+  const deptBreakdown = {};
+
+  // Initialize dept breakdown
+  departments.forEach((dept) => {
+    deptBreakdown[dept.id] = {
+      id: dept.id,
+      name: dept.name,
+      revenue: 0,
+      expenses: 0,
+      net: 0,
+      transactionCount: 0,
+    };
+  });
+
+  // Also handle uncategorized / legacy transactions if any
+  deptBreakdown["other"] = {
+    id: "other",
+    name: "General / Other",
+    revenue: 0,
+    expenses: 0,
+    net: 0,
+    transactionCount: 0,
+  };
+
+  transactions.forEach((tx) => {
+    const amt = Number(tx.amount);
+    const deptKey = tx.departmentId && deptBreakdown[tx.departmentId] ? tx.departmentId : "other";
+
+    if (tx.type === "INCOME") {
+      totalRevenue += amt;
+      deptBreakdown[deptKey].revenue += amt;
+      deptBreakdown[deptKey].net += amt;
+    } else {
+      totalExpenses += amt;
+      deptBreakdown[deptKey].expenses += amt;
+      deptBreakdown[deptKey].net -= amt;
+    }
+    deptBreakdown[deptKey].transactionCount += 1;
+  });
+
+  const netProfit = totalRevenue - totalExpenses;
+  const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+
+  return {
+    totalRevenue,
+    totalExpenses,
+    netProfit,
+    profitMargin,
+    transactionCount: transactions.length,
+    departments: Object.values(deptBreakdown).filter(
+      (d) => d.id !== "other" || d.transactionCount > 0
+    ),
+  };
 }

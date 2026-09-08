@@ -161,3 +161,20 @@
 .hero-image.scrolled {
   transform: rotateX(0deg) scale(1) translateY(40px);
 }
+
+@media print {
+  header,
+  footer {
+    display: none !important;
+  }
+
+  main {
+    padding-top: 0 !important;
+    min-height: auto !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}

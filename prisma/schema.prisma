@@ -8,71 +8,141 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id            String    @id @default(uuid())
-  clerkUserId   String    @unique // clerk user id
-  email         String    @unique
-  name          String?
-  imageUrl      String?
-  transactions  Transaction[]
-  accounts      Account[]
-  budgets       Budget[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  @@map("users")
-}
-
-model Account {
+model Organization {
   id           String        @id @default(uuid())
   name         String
-  type         AccountType
-  balance      Decimal       @default(0) // will ask inital balance while creating an account
-  isDefault    Boolean       @default(false)
-  userId       String
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug         String        @unique
+  currency     String        @default("FCFA")
+  departments  Department[]
+  users        User[]
+  accounts     Account[]
   transactions Transaction[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  @@map("organizations")
+}
+
+model Department {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String        // e.g. "Bistro Restaurant", "Bistro Snack Bar"
+  description    String?
+  users          User[]
+  accounts       Account[]
+  transactions   Transaction[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@map("departments")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  organizationId String?
+  organization   Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String?        // Null for global/all-department access (Boss/GM)
+  department     Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  email          String         @unique
+  passwordHash   String         @default("")
+  name           String
+  phone          String?
+  imageUrl       String?
+  role           UserRole       @default(STAFF)
+  isActive       Boolean        @default(true)
+  transactions   Transaction[]
+  accounts       Account[]
+  budgets        Budget[]
+  refreshTokens  RefreshToken[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN       // Boss: Full organizational authority, can manage all depts & staff
+  MANAGER     // Department or General Manager
+  ACCOUNTANT  // Finance officer: records & generates daily/weekly reports
+  STAFF       // Shift operator / cashier
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
   @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Account {
+  id             String        @id @default(uuid())
+  name           String
+  type           AccountType
+  balance        Decimal       @default(0)
+  isDefault      Boolean       @default(false)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  department     Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([departmentId])
   @@map("accounts")
 }
 
 model Transaction {
   id                String            @id @default(uuid())
-  type             TransactionType
-  amount           Decimal
-  description      String?
-  date             DateTime
-  category         String           
-  receiptUrl       String?
-  isRecurring      Boolean           @default(false)
-  recurringInterval RecurringInterval? // Only used if isRecurring is true
-  nextRecurringDate DateTime?         // Next date for recurring transaction
-  lastProcessed    DateTime?         // Last time this recurring transaction was processed
-  status           TransactionStatus  @default(COMPLETED)
-  userId           String
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accountId        String
-  account          Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  type              TransactionType
+  amount            Decimal
+  description       String?
+  date              DateTime          @default(now())
+  category          String           
+  receiptUrl        String?
+  isRecurring       Boolean           @default(false)
+  recurringInterval RecurringInterval?
+  nextRecurringDate DateTime?
+  lastProcessed     DateTime?
+  status            TransactionStatus @default(COMPLETED)
+  organizationId    String?
+  organization      Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId      String?
+  department        Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId         String?
+  account           Account?          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
+  @@index([organizationId])
+  @@index([departmentId])
   @@index([userId])
   @@index([accountId])
   @@map("transactions")
 }
 
-
 model Budget {
-  id          String       @id @default(uuid())
-  amount      Decimal
-  lastAlertSent DateTime?  // Track when the last alert was sent
-  userId      String       @unique
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id            String    @id @default(uuid())
+  amount        Decimal
+  lastAlertSent DateTime?
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([userId])
   @@map("budgets")

@@ -1,64 +1,64 @@
-import { Suspense } from "react";
-import { getUserAccounts } from "@/actions/dashboard";
-import { getDashboardData } from "@/actions/dashboard";
-import { getCurrentBudget } from "@/actions/budget";
-import { AccountCard } from "./_components/account-card";
-import { CreateAccountDrawer } from "@/components/create-account-drawer";
-import { BudgetProgress } from "./_components/budget-progress";
-import { Card, CardContent } from "@/components/ui/card";
-import { Plus } from "lucide-react";
-import { DashboardOverview } from "./_components/transaction-overview";
-import { FinancialInsights } from "./_components/financial-insights";
+import { redirect } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { getOrganizationOverview } from "@/actions/organization";
+import { getDashboardData, getUserAccounts, getExecutiveKpis } from "@/actions/dashboard";
+import { ExecutiveDashboard } from "./_components/executive-dashboard";
+import { DepartmentDashboard } from "./_components/department-dashboard";
 
 export default async function DashboardPage() {
-  const [accounts, transactions] = await Promise.all([
-    getUserAccounts(),
-    getDashboardData(),
-  ]);
+  const user = await getCurrentUser();
 
-  const defaultAccount = accounts?.find((account) => account.isDefault);
-
-  // Get budget for default account
-  let budgetData = null;
-  if (defaultAccount) {
-    budgetData = await getCurrentBudget(defaultAccount.id);
+  if (!user) {
+    redirect("/login");
   }
 
-  return (
-    <div className="space-y-8">
-      {/* Budget Progress */}
-      <BudgetProgress
-        initialBudget={budgetData?.budget}
-        currentExpenses={budgetData?.currentExpenses || 0}
-      />
+  // If Boss hasn't created an Organization yet, direct them to Onboarding
+  if (user.role === "ADMIN" && !user.organizationId) {
+    redirect("/onboarding");
+  }
 
-      {/* Financial Insights & Statements */}
-      <FinancialInsights
-        accounts={accounts}
-        transactions={transactions || []}
-      />
+  // 1. If Boss (ADMIN): Render the Executive Global Dashboard
+  if (user.role === "ADMIN") {
+    const [orgOverview, kpis, transactions, accounts] = await Promise.all([
+      getOrganizationOverview(),
+      getExecutiveKpis(),
+      getDashboardData("all"),
+      getUserAccounts(),
+    ]);
 
-      {/* Dashboard Overview */}
-      <DashboardOverview
-        accounts={accounts}
-        transactions={transactions || []}
-      />
-
-      {/* Accounts Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <CreateAccountDrawer>
-          <Card className="hover:shadow-md transition-shadow cursor-pointer border-dashed">
-            <CardContent className="flex flex-col items-center justify-center text-muted-foreground h-full pt-5">
-              <Plus className="h-10 w-10 mb-2" />
-              <p className="text-sm font-medium">Add New Account</p>
-            </CardContent>
-          </Card>
-        </CreateAccountDrawer>
-        {accounts.length > 0 &&
-          accounts?.map((account) => (
-            <AccountCard key={account.id} account={account} />
-          ))}
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <ExecutiveDashboard
+          user={user}
+          organization={orgOverview}
+          departments={orgOverview?.departments || []}
+          transactions={transactions || []}
+          accounts={accounts || []}
+          kpis={kpis}
+        />
       </div>
+    );
+  }
+
+  // 2. If Employee (Accountant / Manager / Staff): Render Department-Scoped Portal
+  if (!user.departmentId) {
+    redirect("/profile?notice=no-department");
+  }
+
+  const [transactions, accounts] = await Promise.all([
+    getDashboardData(user.departmentId),
+    getUserAccounts(),
+  ]);
+
+  return (
+    <div className="container mx-auto px-4 py-6">
+      <DepartmentDashboard
+        user={user}
+        department={user.department}
+        organization={user.organization}
+        transactions={transactions || []}
+        accounts={accounts || []}
+      />
     </div>
   );
 }
