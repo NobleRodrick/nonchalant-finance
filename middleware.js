@@ -13,6 +13,7 @@ const PROTECTED_PREFIXES = [
   "/transaction",
   "/account",
   "/profile",
+  "/stock",
 ];
 
 const AUTH_ROUTES = ["/login", "/register", "/sign-in", "/sign-up"];

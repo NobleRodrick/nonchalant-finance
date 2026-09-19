@@ -10,8 +10,13 @@ export const accountSchema = z.object({
 
 export const transactionSchema = z
   .object({
-    type: z.enum(["INCOME", "EXPENSE"]),
+    type: z.enum(["INCOME", "EXPENSE", "SALE", "PURCHASE", "DISCOUNT"]),
     amount: z.string().min(1, "Amount is required"),
+    grossAmount: z.string().optional(),
+    discountAmount: z.string().optional(),
+    netAmount: z.string().optional(),
+    paymentMethod: z.enum(["CASH", "CREDIT", "MOMO", "BANK_TRANSFER"]).default("CASH"),
+    customerName: z.string().optional(),
     description: z.string().optional(),
     date: z.date({ required_error: "Date is required" }),
     departmentId: z.string().optional(),

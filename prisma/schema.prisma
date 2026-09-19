@@ -17,6 +17,7 @@ model Organization {
   users        User[]
   accounts     Account[]
   transactions Transaction[]
+  dailyStockRecords DailyStockRecord[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -32,6 +33,7 @@ model Department {
   users          User[]
   accounts       Account[]
   transactions   Transaction[]
+  dailyStockRecords DailyStockRecord[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -56,6 +58,7 @@ model User {
   accounts       Account[]
   budgets        Budget[]
   refreshTokens  RefreshToken[]
+  dailyStockRecords DailyStockRecord[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -108,9 +111,16 @@ model Transaction {
   id                String            @id @default(uuid())
   type              TransactionType
   amount            Decimal
+  grossAmount       Decimal?
+  discountAmount    Decimal?          @default(0)
+  netAmount         Decimal?
+  paymentMethod     PaymentMethod     @default(CASH)
+  customerName      String?
+  isDebtPaid        Boolean           @default(false)
+  operationCategory OperationCategory?
   description       String?
   date              DateTime          @default(now())
-  category          String           
+  category          String
   receiptUrl        String?
   isRecurring       Boolean           @default(false)
   recurringInterval RecurringInterval?
@@ -132,7 +142,33 @@ model Transaction {
   @@index([departmentId])
   @@index([userId])
   @@index([accountId])
+  @@index([date])
   @@map("transactions")
+}
+
+model DailyStockRecord {
+  id             String        @id @default(uuid())
+  date           DateTime      @default(now())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openingStock   Decimal       @default(0)
+  newPurchases   Decimal       @default(0)
+  stockUsed      Decimal       @default(0)
+  damagedStock   Decimal       @default(0)
+  closingStock   Decimal       @default(0)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([userId])
+  @@index([date])
+  @@map("daily_stock_records")
 }
 
 model Budget {
@@ -151,6 +187,33 @@ model Budget {
 enum TransactionType {
   INCOME
   EXPENSE
+  SALE
+  PURCHASE
+  DISCOUNT
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT
+  MOMO
+  BANK_TRANSFER
+}
+
+enum OperationCategory {
+  PURCHASE_FOOD
+  PURCHASE_DRINK
+  PURCHASE_SUPPLIES
+  OPEX_UTILITIES
+  OPEX_TRANSPORT
+  OPEX_MAINTENANCE
+  OPEX_SALARIES
+  OPEX_OTHER
+  SALE_FOOD
+  SALE_DRINK
+  SALE_SERVICES
+  DISCOUNT_PROMO
+  DISCOUNT_STAFF
+  DISCOUNT_CUSTOMER
 }
 
 enum AccountType {

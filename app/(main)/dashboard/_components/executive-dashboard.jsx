@@ -1,25 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/currency";
 import { FinancialInsights } from "./financial-insights";
+import { IndustryKpiStrip } from "./industry-kpi-strip";
+import { MonthSelector } from "./month-selector";
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
   Building2,
   Users,
   Layers,
-  ArrowUpRight,
-  ArrowDownRight,
-  Plus,
+  Banknote,
+  ShoppingCart,
+  Boxes,
   FileText,
   Filter,
+  Plus,
+  ArrowRight,
+  Clock,
 } from "lucide-react";
+import { format, isSameDay } from "date-fns";
 
 export function ExecutiveDashboard({
   user,
@@ -27,152 +32,168 @@ export function ExecutiveDashboard({
   departments = [],
   transactions = [],
   accounts = [],
+  stockRecords = [],
   kpis,
 }) {
+  const currentMonthKey = format(new Date(), "yyyy-MM");
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
   const [selectedDeptId, setSelectedDeptId] = useState("all");
 
-  // Filter transactions based on selected department tab
-  const displayedTransactions =
-    selectedDeptId === "all"
-      ? transactions
-      : transactions.filter((t) => t.departmentId === selectedDeptId);
+  // 1. Filter by Accounting Month
+  const monthFilteredTransactions = useMemo(() => {
+    if (selectedMonth === "all") return transactions;
+    return transactions.filter((t) => {
+      const txDate = format(new Date(t.date), "yyyy-MM");
+      return txDate === selectedMonth;
+    });
+  }, [transactions, selectedMonth]);
 
-  // Compute metrics for the active filter
-  const totalRevenue = displayedTransactions
-    .filter((t) => t.type === "INCOME")
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const monthFilteredStock = useMemo(() => {
+    if (selectedMonth === "all") return stockRecords;
+    return stockRecords.filter((s) => {
+      const sDate = format(new Date(s.date), "yyyy-MM");
+      return sDate === selectedMonth;
+    });
+  }, [stockRecords, selectedMonth]);
 
-  const totalExpenses = displayedTransactions
-    .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  // 2. Filter by Department Scope
+  const displayedTransactions = useMemo(() => {
+    if (selectedDeptId === "all") return monthFilteredTransactions;
+    return monthFilteredTransactions.filter((t) => t.departmentId === selectedDeptId);
+  }, [monthFilteredTransactions, selectedDeptId]);
 
-  const netProfit = totalRevenue - totalExpenses;
-  const margin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+  const displayedStock = useMemo(() => {
+    if (selectedDeptId === "all") return monthFilteredStock;
+    return monthFilteredStock.filter((s) => s.departmentId === selectedDeptId);
+  }, [monthFilteredStock, selectedDeptId]);
+
+  // 3. Today's Transactions for live shift monitoring
+  const todayTransactions = useMemo(() => {
+    const today = new Date();
+    return transactions.filter((t) => isSameDay(new Date(t.date), today));
+  }, [transactions]);
+
+  const todayStock = useMemo(() => {
+    const today = new Date();
+    return stockRecords.filter((s) => isSameDay(new Date(s.date), today));
+  }, [stockRecords]);
+
+  // Human-readable period name
+  const monthLabel =
+    selectedMonth === "all"
+      ? "Consolidated (All Time)"
+      : format(new Date(`${selectedMonth}-01`), "MMMM yyyy");
 
   return (
     <div className="space-y-8">
       {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-6 rounded-2xl shadow-xl">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Building2 className="h-5 w-5 text-blue-400" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-blue-300">
+            <Building2 className="h-5 w-5 text-emerald-400" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-emerald-300">
               Executive Command Center
             </span>
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight">{organization?.name || "Business Organization"}</h1>
           <p className="text-slate-300 text-sm mt-1">
-            Consolidated oversight across {departments.length} operational departments
+            Consolidated managerial accounting across {departments.length} operational sectors
           </p>
         </div>
 
+        {/* Quick Operations Actions */}
         <div className="flex flex-wrap gap-2">
-          <Link href="/organization/employees">
-            <Button variant="secondary" size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20">
-              <Users className="h-4 w-4 mr-1.5" /> Staff Directory
+          <Link href="/transaction/create?tab=sales">
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-sm">
+              <Banknote className="h-4 w-4 mr-1.5" /> Record Sales
             </Button>
           </Link>
-          <Link href="/organization/departments">
-            <Button variant="secondary" size="sm" className="bg-white/10 hover:bg-white/20 text-white border-white/20">
-              <Layers className="h-4 w-4 mr-1.5" /> Departments
+          <Link href="/transaction/create?tab=purchases">
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-sm">
+              <ShoppingCart className="h-4 w-4 mr-1.5" /> Record Purchase
+            </Button>
+          </Link>
+          <Link href="/stock">
+            <Button size="sm" variant="secondary" className="bg-white/10 hover:bg-white/20 text-white border-white/20">
+              <Boxes className="h-4 w-4 mr-1.5" /> Stock Control
             </Button>
           </Link>
           <Link href="/reports">
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-500 text-white font-medium">
+            <Button size="sm" variant="secondary" className="bg-white/10 hover:bg-white/20 text-white border-white/20">
               <FileText className="h-4 w-4 mr-1.5" /> Closing Reports
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Department Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        <span className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1 mr-1">
-          <Filter className="h-3.5 w-3.5" /> Scope:
-        </span>
-        <button
-          onClick={() => setSelectedDeptId("all")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            selectedDeptId === "all"
-              ? "bg-blue-600 text-white shadow-sm"
-              : "bg-white border text-slate-700 hover:bg-slate-50"
-          }`}
-        >
-          All Departments (Consolidated)
-        </button>
-        {departments.map((dept) => (
+      {/* Control Bar: Accounting Month Selector & Department Scope Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 bg-slate-50 border rounded-2xl shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+          <span className="text-xs font-semibold text-muted-foreground uppercase flex items-center gap-1 mr-1">
+            <Filter className="h-3.5 w-3.5" /> Sector:
+          </span>
           <button
-            key={dept.id}
-            onClick={() => setSelectedDeptId(dept.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              selectedDeptId === dept.id
+            onClick={() => setSelectedDeptId("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              selectedDeptId === "all"
                 ? "bg-blue-600 text-white shadow-sm"
-                : "bg-white border text-slate-700 hover:bg-slate-50"
+                : "bg-white border text-slate-700 hover:bg-slate-100"
             }`}
           >
-            {dept.name}
+            All Sectors (Consolidated)
           </button>
-        ))}
+          {departments.map((dept) => (
+            <button
+              key={dept.id}
+              onClick={() => setSelectedDeptId(dept.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                selectedDeptId === dept.id
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-white border text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              {dept.name}
+            </button>
+          ))}
+        </div>
+
+        <MonthSelector
+          selectedMonth={selectedMonth}
+          onMonthChange={setSelectedMonth}
+        />
       </div>
 
-      {/* Primary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            <ArrowUpRight className="h-4 w-4 text-emerald-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Recorded gross sales & income</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Operating Expenses</CardTitle>
-            <ArrowDownRight className="h-4 w-4 text-rose-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalExpenses)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Purchases, utilities, & bills</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Net Operating Profit</CardTitle>
-            <TrendingUp className={`h-4 w-4 ${netProfit >= 0 ? "text-emerald-500" : "text-rose-500"}`} />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${netProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-              {formatCurrency(netProfit)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Net margin: <span className="font-semibold text-slate-800">{margin}%</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Volume & Activity</CardTitle>
-            <FileText className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-slate-900">{displayedTransactions.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total recorded transactions</p>
-          </CardContent>
-        </Card>
+      {/* Today's Real-time Operations Strip */}
+      <div className="p-4 bg-emerald-50/40 border border-emerald-200 rounded-2xl">
+        <div className="flex items-center gap-2 mb-3 text-emerald-900 font-bold text-sm">
+          <Clock className="h-4 w-4 text-emerald-600" />
+          <span>Today&apos;s Live Shift ({format(new Date(), "PPP")})</span>
+        </div>
+        <IndustryKpiStrip
+          transactions={todayTransactions}
+          stockRecords={todayStock}
+          title="Today's Performance"
+          subtitle="Instant cash reconciliation and sales generated so far today"
+        />
       </div>
 
-      {/* Cross-Department Breakdown (Shown when viewing Consolidated) */}
+      {/* Selected Accounting Period Performance Strip (Point 6 & 8) */}
+      <IndustryKpiStrip
+        transactions={displayedTransactions}
+        stockRecords={displayedStock}
+        title={`${monthLabel} Performance Overview`}
+        subtitle={`Aggregated financial performance for ${monthLabel} (${displayedTransactions.length} operations)`}
+      />
+
+      {/* Cross-Department Breakdown Matrix (Point 7) */}
       {selectedDeptId === "all" && kpis?.departments && (
         <Card className="shadow-sm border-slate-200">
           <CardHeader>
-            <CardTitle className="text-base font-semibold">Department Performance Matrix</CardTitle>
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-indigo-600" /> Department Performance Matrix ({monthLabel})
+            </CardTitle>
             <CardDescription>
-              Real-time revenue, expense, and net margin breakdown across your sectors
+              Compare sales, food purchases, overheads, and cash handover across your departments
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -180,30 +201,44 @@ export function ExecutiveDashboard({
               {kpis.departments.map((dept) => (
                 <div
                   key={dept.id}
-                  className="p-4 rounded-xl border bg-slate-50 hover:bg-slate-100/80 transition-colors cursor-pointer"
+                  className="p-4 rounded-xl border bg-slate-50 hover:bg-slate-100/80 transition-all cursor-pointer shadow-sm"
                   onClick={() => setSelectedDeptId(dept.id)}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-slate-900 text-sm">{dept.name}</span>
-                    <Badge variant="outline" className="text-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-extrabold text-slate-900 text-sm">{dept.name}</span>
+                    <Badge variant="outline" className="text-xs bg-white">
                       {dept.transactionCount} txns
                     </Badge>
                   </div>
 
-                  <div className="space-y-1 text-xs">
+                  <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Revenue:</span>
-                      <span className="font-medium text-emerald-600">{formatCurrency(dept.revenue)}</span>
+                      <span className="text-muted-foreground">Gross Sales:</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(dept.sales + (dept.discounts || 0))}</span>
+                    </div>
+                    {dept.discounts > 0 && (
+                      <div className="flex justify-between text-rose-600">
+                        <span>Discounts Given:</span>
+                        <span>- {formatCurrency(dept.discounts)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Purchases (Stock):</span>
+                      <span className="font-semibold text-blue-700">{formatCurrency(dept.purchases)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Expenses:</span>
-                      <span className="font-medium text-rose-600">{formatCurrency(dept.expenses)}</span>
+                      <span className="text-muted-foreground">Expenses (OPEX):</span>
+                      <span className="font-semibold text-rose-700">{formatCurrency(dept.expenses)}</span>
                     </div>
-                    <div className="flex justify-between pt-1 border-t font-semibold">
-                      <span>Net:</span>
-                      <span className={dept.net >= 0 ? "text-emerald-700" : "text-rose-700"}>
-                        {formatCurrency(dept.net)}
+                    <div className="flex justify-between pt-2 border-t font-extrabold">
+                      <span>Estimated Profit:</span>
+                      <span className={dept.netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}>
+                        {formatCurrency(dept.netProfit)}
                       </span>
+                    </div>
+                    <div className="flex justify-between text-[11px] pt-1 text-amber-800 font-semibold bg-amber-50/60 p-1.5 rounded">
+                      <span>Cash Handover:</span>
+                      <span>{formatCurrency(dept.cashToHandOver || 0)}</span>
                     </div>
                   </div>
                 </div>
@@ -213,64 +248,11 @@ export function ExecutiveDashboard({
         </Card>
       )}
 
-      {/* Comprehensive Financial Statements & Reports Engine */}
+      {/* Financial Statements & Ratio Reports */}
       <FinancialInsights
         accounts={accounts}
         transactions={displayedTransactions}
       />
-
-      {/* Recent Transactions List */}
-      <Card className="shadow-sm border-slate-200">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-semibold">Recent Operations Ledger</CardTitle>
-            <CardDescription>Latest entries logged across your departments</CardDescription>
-          </div>
-          <Link href="/transaction/create">
-            <Button size="sm" variant="outline" className="text-xs">
-              <Plus className="h-3.5 w-3.5 mr-1" /> New Entry
-            </Button>
-          </Link>
-        </CardHeader>
-        <CardContent>
-          {displayedTransactions.length === 0 ? (
-            <p className="text-center py-8 text-sm text-muted-foreground">
-              No transactions recorded yet for this selection.
-            </p>
-          ) : (
-            <div className="divide-y text-sm">
-              {displayedTransactions.slice(0, 8).map((t) => (
-                <div key={t.id} className="py-3 flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-slate-800">
-                        {t.description || t.category}
-                      </span>
-                      {t.department && (
-                        <Badge variant="secondary" className="text-[10px] py-0">
-                          {t.department.name}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(t.date).toLocaleDateString()} • Logged by {t.user?.name || "Staff"}
-                    </p>
-                  </div>
-
-                  <div
-                    className={`font-bold ${
-                      t.type === "INCOME" ? "text-emerald-600" : "text-slate-900"
-                    }`}
-                  >
-                    {t.type === "INCOME" ? "+" : "-"}
-                    {formatCurrency(t.amount)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

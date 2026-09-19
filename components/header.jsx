@@ -22,6 +22,8 @@ import {
   Building2,
   Shield,
   Briefcase,
+  Boxes,
+  Banknote,
 } from "lucide-react";
 
 export default async function Header() {
@@ -72,13 +74,21 @@ export default async function Header() {
                 </Button>
               </Link>
 
+              {/* Stock Management Link */}
+              <Link href="/stock">
+                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-slate-700">
+                  <Boxes className="h-4 w-4 text-indigo-600" />
+                  <span className="hidden md:inline font-medium">Stock Control</span>
+                </Button>
+              </Link>
+
               {/* Boss-only links */}
               {user.role === "ADMIN" && (
                 <>
                   <Link href="/organization/employees">
                     <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
                       <Users className="h-4 w-4 text-indigo-600" />
-                      <span className="font-medium">Staff & Roles</span>
+                      <span className="font-medium">Staff</span>
                     </Button>
                   </Link>
                   <Link href="/organization/departments">
@@ -90,7 +100,7 @@ export default async function Header() {
                 </>
               )}
 
-              {/* Reports Link (for both Boss and Accountants) */}
+              {/* Reports Link */}
               <Link href="/reports">
                 <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-slate-700">
                   <FileText className="h-4 w-4 text-emerald-600" />
@@ -98,11 +108,19 @@ export default async function Header() {
                 </Button>
               </Link>
 
+              {/* Record Sales Quick Button */}
+              <Link href="/transaction/create?tab=sales">
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5">
+                  <Banknote className="h-4 w-4" />
+                  <span className="hidden sm:inline">Record Sales</span>
+                </Button>
+              </Link>
+
               {/* Record Transaction Button */}
-              <Link href="/transaction/create">
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5">
+              <Link href="/transaction/create?tab=purchases">
+                <Button size="sm" variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50 hidden sm:flex items-center gap-1.5">
                   <PenBox className="h-4 w-4" />
-                  <span className="hidden sm:inline">Add Transaction</span>
+                  <span>Purchases & Expenses</span>
                 </Button>
               </Link>
 

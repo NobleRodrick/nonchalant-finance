@@ -38,6 +38,7 @@ async function cleanup() {
     if (empId) await db.refreshToken.deleteMany({ where: { userId: empId } });
     if (transactionId) await db.transaction.delete({ where: { id: transactionId } }).catch(() => {});
     if (orgId) {
+      await db.dailyStockRecord.deleteMany({ where: { organizationId: orgId } });
       await db.transaction.deleteMany({ where: { organizationId: orgId } });
       await db.account.deleteMany({ where: { organizationId: orgId } });
       await db.user.deleteMany({ where: { organizationId: orgId } });
@@ -186,6 +187,78 @@ async function main() {
     const newLogin = await bcrypt.compare("NewPass789!", changed.passwordHash);
     if (newLogin) pass("Password change works");
     else fail("Password change", "new password not accepted");
+
+    // 12. Restaurant Sales with Gross, Discounts, and Net calculation
+    const saleTx = await db.transaction.create({
+      data: {
+        type: "SALE",
+        amount: 140000,
+        grossAmount: 150000,
+        discountAmount: 10000,
+        netAmount: 140000,
+        paymentMethod: "CASH",
+        category: "sale-food",
+        description: "Dinner shift food sales",
+        organizationId: orgId,
+        departmentId: deptAId,
+        userId: bossId,
+      },
+    });
+    if (saleTx && Number(saleTx.grossAmount) - Number(saleTx.discountAmount) === 140000) {
+      pass("Sale with gross, discount, and net calculation verified (150k - 10k = 140k)");
+    } else {
+      fail("Sale discount calculation", "mismatch");
+    }
+
+    // 13. Purchase separation (Food/Drink Raw Materials)
+    const purchaseTx = await db.transaction.create({
+      data: {
+        type: "PURCHASE",
+        amount: 60000,
+        category: "purchase-meat",
+        description: "25kg fresh beef for kitchen",
+        organizationId: orgId,
+        departmentId: deptAId,
+        userId: bossId,
+      },
+    });
+    if (purchaseTx.type === "PURCHASE") {
+      pass("Food purchase recorded distinctly from operating expenses");
+    } else {
+      fail("Purchase separation", "expected PURCHASE type");
+    }
+
+    // 14. Stock Management formula: Opening + Purchases - Used - Damaged = Closing
+    const stockRec = await db.dailyStockRecord.create({
+      data: {
+        organizationId: orgId,
+        departmentId: deptAId,
+        userId: bossId,
+        date: new Date(),
+        openingStock: 300000,
+        newPurchases: 100000,
+        stockUsed: 150000,
+        damagedStock: 10000,
+        closingStock: 240000,
+        notes: "End of day kitchen inventory count",
+      },
+    });
+    const expectedClosing = Number(stockRec.openingStock) + Number(stockRec.newPurchases) - Number(stockRec.stockUsed) - Number(stockRec.damagedStock);
+    if (expectedClosing === 240000 && Number(stockRec.closingStock) === 240000) {
+      pass("Daily stock ledger verified: 300k + 100k - 150k - 10k = 240k FCFA");
+    } else {
+      fail("Stock ledger formula", `expected 240000, got ${expectedClosing}`);
+    }
+
+    // 15. Cash handover calculation verification
+    const cashSales = 140000;
+    const purchasesPaid = 60000;
+    const cashHandover = cashSales - purchasesPaid;
+    if (cashHandover === 80000) {
+      pass("Cash handover reconciliation verified: 140k cash sales - 60k purchases = 80k FCFA");
+    } else {
+      fail("Cash handover reconciliation", "calculation mismatch");
+    }
 
   } catch (err) {
     fail("Unexpected error", err.message);

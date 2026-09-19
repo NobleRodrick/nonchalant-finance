@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getOrganizationOverview } from "@/actions/organization";
 import { getDashboardData, getUserAccounts, getExecutiveKpis } from "@/actions/dashboard";
+import { getDepartmentStockRecords } from "@/actions/stock";
 import { ExecutiveDashboard } from "./_components/executive-dashboard";
 import { DepartmentDashboard } from "./_components/department-dashboard";
 
@@ -19,11 +20,12 @@ export default async function DashboardPage() {
 
   // 1. If Boss (ADMIN): Render the Executive Global Dashboard
   if (user.role === "ADMIN") {
-    const [orgOverview, kpis, transactions, accounts] = await Promise.all([
+    const [orgOverview, kpis, transactions, accounts, stockRecords] = await Promise.all([
       getOrganizationOverview(),
       getExecutiveKpis(),
       getDashboardData("all"),
       getUserAccounts(),
+      getDepartmentStockRecords(null, 30),
     ]);
 
     return (
@@ -35,6 +37,7 @@ export default async function DashboardPage() {
           transactions={transactions || []}
           accounts={accounts || []}
           kpis={kpis}
+          stockRecords={stockRecords || []}
         />
       </div>
     );
@@ -45,9 +48,10 @@ export default async function DashboardPage() {
     redirect("/profile?notice=no-department");
   }
 
-  const [transactions, accounts] = await Promise.all([
+  const [transactions, accounts, stockRecords] = await Promise.all([
     getDashboardData(user.departmentId),
     getUserAccounts(),
+    getDepartmentStockRecords(user.departmentId, 30),
   ]);
 
   return (
@@ -58,6 +62,7 @@ export default async function DashboardPage() {
         organization={user.organization}
         transactions={transactions || []}
         accounts={accounts || []}
+        stockRecords={stockRecords || []}
       />
     </div>
   );

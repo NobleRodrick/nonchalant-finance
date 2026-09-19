@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { getDashboardData } from "@/actions/dashboard";
 import { getDepartments } from "@/actions/organization";
 import { getSessionUser } from "@/actions/auth";
+import { getDepartmentStockRecords } from "@/actions/stock";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,14 @@ import {
   TrendingDown,
   Loader2,
   Copy,
+  Download,
+  Banknote,
+  ShoppingCart,
+  Zap,
+  Boxes,
+  HandCoins,
+  CreditCard,
+  Percent,
 } from "lucide-react";
 import {
   startOfDay,
@@ -39,6 +48,7 @@ export default function ReportsPage() {
   const [currentUser, setCurrentUser] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]);
+  const [allStockRecords, setAllStockRecords] = useState([]);
 
   // Filter states
   const [period, setPeriod] = useState("today");
@@ -49,15 +59,17 @@ export default function ReportsPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [user, depts, txns] = await Promise.all([
+        const [user, depts, txns, stock] = await Promise.all([
           getSessionUser(),
           getDepartments(),
           getDashboardData("all"),
+          getDepartmentStockRecords(null, 100),
         ]);
 
         setCurrentUser(user);
-        setDepartments(depts);
+        setDepartments(depts || []);
         setAllTransactions(txns || []);
+        setAllStockRecords(stock || []);
 
         if (user?.role !== "ADMIN" && user?.departmentId) {
           setSelectedDeptId(user.departmentId);
@@ -76,27 +88,27 @@ export default function ReportsPage() {
     const now = new Date();
     switch (period) {
       case "today":
-        return { start: startOfDay(now), end: endOfDay(now), label: `Today (${format(now, "PPP")})` };
+        return { start: startOfDay(now), end: endOfDay(now), label: `Daily Closing - ${format(now, "PPP")}` };
       case "yesterday": {
         const yest = subDays(now, 1);
-        return { start: startOfDay(yest), end: endOfDay(yest), label: `Yesterday (${format(yest, "PPP")})` };
+        return { start: startOfDay(yest), end: endOfDay(yest), label: `Daily Closing - Yesterday (${format(yest, "PPP")})` };
       }
       case "this-week":
         return {
           start: startOfWeek(now, { weekStartsOn: 1 }),
           end: endOfWeek(now, { weekStartsOn: 1 }),
-          label: "This Week",
+          label: `Weekly Report - Week of ${format(startOfWeek(now, { weekStartsOn: 1 }), "PPP")}`,
         };
       case "last-7":
-        return { start: startOfDay(subDays(now, 7)), end: endOfDay(now), label: "Last 7 Days" };
+        return { start: startOfDay(subDays(now, 7)), end: endOfDay(now), label: "Rolling 7-Day Summary" };
       case "this-month":
-        return { start: startOfMonth(now), end: endOfMonth(now), label: `This Month (${format(now, "MMMM yyyy")})` };
+        return { start: startOfMonth(now), end: endOfMonth(now), label: `Monthly Statement - ${format(now, "MMMM yyyy")}` };
       case "custom":
       default:
         return {
           start: customStart ? new Date(customStart + "T00:00:00") : startOfDay(now),
           end: customEnd ? new Date(customEnd + "T23:59:59") : endOfDay(now),
-          label: `${customStart} to ${customEnd}`,
+          label: `Custom Period: ${customStart} to ${customEnd}`,
         };
     }
   }, [period, customStart, customEnd]);
@@ -117,42 +129,161 @@ export default function ReportsPage() {
     });
   }, [allTransactions, dateInterval, selectedDeptId]);
 
-  // Financial calculations
-  const incomes = filteredTransactions.filter((t) => t.type === "INCOME");
-  const expenses = filteredTransactions.filter((t) => t.type === "EXPENSE");
+  // Filter stock records for report
+  const filteredStockRecords = useMemo(() => {
+    return allStockRecords.filter((s) => {
+      const sDate = new Date(s.date);
+      const matchesDate = isWithinInterval(sDate, {
+        start: dateInterval.start,
+        end: dateInterval.end,
+      });
+      const matchesDept = selectedDeptId === "all" || s.departmentId === selectedDeptId;
+      return matchesDate && matchesDept;
+    });
+  }, [allStockRecords, dateInterval, selectedDeptId]);
 
-  const totalRevenue = incomes.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const totalExpenses = expenses.reduce((sum, t) => sum + Number(t.amount || 0), 0);
-  const netProfit = totalRevenue - totalExpenses;
-  const margin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+  // Comprehensive Financial & Operational Calculations
+  const reportMetrics = useMemo(() => {
+    let grossSales = 0;
+    let discounts = 0;
+    let netSales = 0;
+    let cashSales = 0;
+    let creditSales = 0;
+    let otherIncome = 0;
+    let totalPurchases = 0;
+    let totalExpenses = 0;
+    let outstandingDebts = 0;
 
-  // Breakdown by category
-  const revenueByCategory = incomes.reduce((acc, t) => {
-    acc[t.category] = (acc[t.category] || 0) + Number(t.amount || 0);
-    return acc;
-  }, {});
+    const creditTransactions = [];
+    const salesByCategory = {};
+    const purchasesByCategory = {};
+    const expensesByCategory = {};
 
-  const expensesByCategory = expenses.reduce((acc, t) => {
-    acc[t.category] = (acc[t.category] || 0) + Number(t.amount || 0);
-    return acc;
-  }, {});
+    filteredTransactions.forEach((tx) => {
+      const amt = Number(tx.amount || 0);
+      const gross = Number(tx.grossAmount || tx.amount || 0);
+      const disc = Number(tx.discountAmount || 0);
+      const net = Number(tx.netAmount || tx.amount || 0);
+      const cat = tx.category || "General";
 
-  // Print function
+      if (tx.type === "SALE") {
+        grossSales += gross;
+        discounts += disc;
+        netSales += net;
+
+        salesByCategory[cat] = (salesByCategory[cat] || 0) + net;
+
+        if (tx.paymentMethod === "CREDIT") {
+          creditSales += net;
+          creditTransactions.push(tx);
+          if (!tx.isDebtPaid) outstandingDebts += net;
+        } else {
+          cashSales += net;
+        }
+      } else if (tx.type === "INCOME") {
+        grossSales += amt;
+        netSales += amt;
+        cashSales += amt;
+        otherIncome += amt;
+        salesByCategory[cat] = (salesByCategory[cat] || 0) + amt;
+      } else if (tx.type === "PURCHASE" || (tx.category && tx.category.startsWith("purchase-"))) {
+        totalPurchases += amt;
+        purchasesByCategory[cat] = (purchasesByCategory[cat] || 0) + amt;
+      } else if (tx.type === "DISCOUNT") {
+        discounts += amt;
+      } else {
+        totalExpenses += amt;
+        expensesByCategory[cat] = (expensesByCategory[cat] || 0) + amt;
+      }
+    });
+
+    // Stock metrics
+    let openingStock = 0;
+    let newStockPurchased = 0;
+    let stockUsed = 0;
+    let damagedStock = 0;
+    let closingStock = 0;
+
+    if (filteredStockRecords.length > 0) {
+      openingStock = Number(filteredStockRecords[filteredStockRecords.length - 1].openingStock || 0);
+      filteredStockRecords.forEach((s) => {
+        newStockPurchased += Number(s.newPurchases || 0);
+        stockUsed += Number(s.stockUsed || 0);
+        damagedStock += Number(s.damagedStock || 0);
+      });
+      closingStock = Number(filteredStockRecords[0].closingStock || 0);
+    } else {
+      newStockPurchased = totalPurchases;
+    }
+
+    const cogs = stockUsed > 0 ? stockUsed : totalPurchases;
+    const grossMargin = netSales - cogs;
+    const netProfit = grossMargin - totalExpenses;
+    const marginPercent = netSales > 0 ? ((netProfit / netSales) * 100).toFixed(1) : 0;
+
+    // Cash Handover: Total actual cash collected minus cash paid out
+    const cashToHandOver = Math.max(0, cashSales + otherIncome - totalPurchases - totalExpenses);
+
+    return {
+      grossSales,
+      discounts,
+      netSales,
+      cashSales,
+      creditSales,
+      otherIncome,
+      totalPurchases,
+      totalExpenses,
+      cogs,
+      grossMargin,
+      netProfit,
+      marginPercent,
+      cashToHandOver,
+      outstandingDebts,
+      creditTransactions,
+      salesByCategory,
+      purchasesByCategory,
+      expensesByCategory,
+      openingStock,
+      newStockPurchased,
+      stockUsed,
+      damagedStock,
+      closingStock,
+      txCount: filteredTransactions.length,
+    };
+  }, [filteredTransactions, filteredStockRecords]);
+
+  // Print function (opens browser print dialog which formats as PDF export)
   const handlePrint = () => {
     window.print();
   };
 
-  // Copy summary text for easy sharing on WhatsApp / Email
+  // Copy structured summary for WhatsApp / Managerial communication
   const handleCopySummary = () => {
     const deptTitle =
       selectedDeptId === "all"
-        ? "Consolidated (All Departments)"
+        ? "Consolidated (All Sectors)"
         : departments.find((d) => d.id === selectedDeptId)?.name || "Department";
 
-    const text = `📊 *${currentUser?.organizationName || "Company"} - Financial Report*\n🏢 *Sector:* ${deptTitle}\n📅 *Period:* ${dateInterval.label}\n\n💰 *Total Revenue:* ${formatCurrency(totalRevenue)}\n📉 *Total Expenses:* ${formatCurrency(totalExpenses)}\n✨ *Net Profit:* ${formatCurrency(netProfit)} (${margin}% margin)\n📝 *Total Transactions:* ${filteredTransactions.length}\n\nGenerated on ${new Date().toLocaleString()} by ${currentUser?.name || "Staff"}`;
+    const text = `📊 *${currentUser?.organizationName || "Restaurant Group"} - Closing Report*
+🏢 *Department:* ${deptTitle}
+📅 *Period:* ${dateInterval.label}
+
+💵 *Gross Sales:* ${formatCurrency(reportMetrics.grossSales)}
+🏷️ *Discounts:* -${formatCurrency(reportMetrics.discounts)}
+✨ *Net Sales:* ${formatCurrency(reportMetrics.netSales)}
+💰 *Cash Sales Received:* ${formatCurrency(reportMetrics.cashSales)}
+💳 *Credit / Debts:* ${formatCurrency(reportMetrics.creditSales)}
+
+📦 *Food Purchases (COGS):* ${formatCurrency(reportMetrics.totalPurchases)}
+💡 *Operating Expenses:* ${formatCurrency(reportMetrics.totalExpenses)}
+📈 *Net Estimated Profit:* ${formatCurrency(reportMetrics.netProfit)} (${reportMetrics.marginPercent}%)
+
+🚨 *Cash to Hand Over Tonight:* ${formatCurrency(reportMetrics.cashToHandOver)}
+${reportMetrics.closingStock > 0 ? `📦 *Closing Stock Remaining:* ${formatCurrency(reportMetrics.closingStock)}\n` : ""}
+Generated on ${new Date().toLocaleString()} by ${currentUser?.name || "Shift Manager"}`;
 
     navigator.clipboard.writeText(text);
-    toast.success("Report summary copied to clipboard! Ready to share.");
+    toast.success("Executive closing report copied to clipboard!");
   };
 
   if (loading) {
@@ -170,33 +301,33 @@ export default function ReportsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Non-printed Controls Card */}
+      {/* 1. Interactive Controls Toolbar (Hidden in Print) */}
       <Card className="shadow-sm border-slate-200 print:hidden">
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-2xl font-bold flex items-center gap-2">
+              <CardTitle className="text-2xl font-extrabold flex items-center gap-2 text-slate-900">
                 <FileText className="h-6 w-6 text-blue-600" />
-                Financial Closing & Operational Reports
+                Financial & Operational Closing Reports
               </CardTitle>
               <CardDescription>
-                Generate, download, and share closing statements for today, this week, or any custom interval
+                Generate, download, and print official daily, weekly, or monthly closing statements
               </CardDescription>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleCopySummary}>
+              <Button variant="outline" size="sm" onClick={handleCopySummary} className="h-9">
                 <Copy className="h-4 w-4 mr-1.5" /> Copy Summary
               </Button>
-              <Button size="sm" onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white">
-                <Printer className="h-4 w-4 mr-1.5" /> Print Report
+              <Button size="sm" onClick={handlePrint} className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-9">
+                <Printer className="h-4 w-4 mr-1.5" /> Print / Save PDF
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-0">
           <div className="flex flex-wrap items-center gap-3">
-            {/* Department Scope Selector (Only for Admin or multi-department staff) */}
+            {/* Department Scope Selector */}
             {currentUser?.role === "ADMIN" && (
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-slate-600">Department:</span>
@@ -217,18 +348,18 @@ export default function ReportsPage() {
 
             {/* Time Period Selector */}
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-600">Period:</span>
+              <span className="text-xs font-semibold text-slate-600">Report Frequency:</span>
               <select
-                className="h-9 rounded-md border border-input bg-white px-3 py-1 text-xs font-medium shadow-sm"
+                className="h-9 rounded-md border border-input bg-white px-3 py-1 text-xs font-bold shadow-sm text-blue-900"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
               >
-                <option value="today">Today (Daily Closing)</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="this-week">This Week</option>
-                <option value="last-7">Last 7 Days</option>
-                <option value="this-month">This Month</option>
-                <option value="custom">Custom Date Range</option>
+                <option value="today">📅 Daily Closing Report (Today)</option>
+                <option value="yesterday">📅 Yesterday's Shift</option>
+                <option value="this-week">📊 Weekly Performance Report</option>
+                <option value="last-7">📊 Rolling 7 Days</option>
+                <option value="this-month">📑 Monthly Financial Statement</option>
+                <option value="custom">🔍 Custom Date Range</option>
               </select>
             </div>
 
@@ -254,175 +385,244 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
 
-      {/* Printable Report Document */}
-      <div className="bg-white border rounded-2xl p-6 sm:p-10 shadow-sm print:border-none print:shadow-none print:p-0">
+      {/* 2. Official Printable & Downloadable Report Document */}
+      <div className="bg-white p-6 sm:p-10 rounded-2xl shadow-md border border-slate-200 print:border-none print:shadow-none print:p-0 space-y-8 max-w-4xl mx-auto">
         {/* Document Header */}
-        <div className="flex justify-between items-start border-b pb-6 mb-6">
+        <div className="border-b-2 border-slate-900 pb-6 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-blue-600 mb-1">
-              <Building2 className="h-5 w-5" />
-              <span className="font-bold text-lg">{currentUser?.organizationName || "Company Organization"}</span>
+            <div className="text-xs uppercase font-extrabold tracking-widest text-blue-600 mb-1">
+              Official Operations & Financial Statement
             </div>
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">
-              Financial Closing Statement
-            </h2>
-            <p className="text-sm font-medium text-slate-600 mt-1">
-              Sector: <span className="text-blue-700 font-semibold">{activeDepartmentName}</span>
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              {currentUser?.organizationName || "Business Organization"}
+            </h1>
+            <p className="text-sm font-semibold text-slate-700 mt-1 flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-slate-500" />
+              <span>Department: {activeDepartmentName}</span>
             </p>
           </div>
 
-          <div className="text-right text-xs space-y-1">
-            <div className="font-semibold text-slate-800">
-              Period: <span className="font-normal">{dateInterval.label}</span>
-            </div>
-            <div className="text-muted-foreground">
-              Generated: {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()}
-            </div>
-            <div className="text-muted-foreground">
-              Sign-off Staff: <span className="font-medium text-slate-800">{currentUser?.name || "Accountant"}</span> (
-              {currentUser?.role})
-            </div>
+          <div className="sm:text-right space-y-1 text-xs text-slate-600">
+            <div className="font-extrabold text-sm text-slate-900">{dateInterval.label}</div>
+            <div>Generated: {format(new Date(), "PPP p")}</div>
+            <div>Prepared By: <span className="font-semibold">{currentUser?.name}</span> ({currentUser?.role})</div>
+            <div>Transactions Recorded: <span className="font-semibold">{reportMetrics.txCount}</span></div>
           </div>
         </div>
 
-        {/* High-Level Financial Summary Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-8">
-          <div className="p-4 rounded-xl border bg-slate-50">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Gross Revenue</span>
-            <div className="text-2xl font-extrabold text-emerald-600 mt-1">{formatCurrency(totalRevenue)}</div>
-            <span className="text-[11px] text-muted-foreground">{incomes.length} sales recorded</span>
-          </div>
-
-          <div className="p-4 rounded-xl border bg-slate-50">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Operating Expenses</span>
-            <div className="text-2xl font-extrabold text-rose-600 mt-1">{formatCurrency(totalExpenses)}</div>
-            <span className="text-[11px] text-muted-foreground">{expenses.length} expenses logged</span>
-          </div>
-
-          <div className="p-4 rounded-xl border bg-slate-50">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Net Operating Profit</span>
-            <div className={`text-2xl font-extrabold mt-1 ${netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-              {formatCurrency(netProfit)}
+        {/* Executive Highlights Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase">Gross Sales</span>
+            <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
+              {formatCurrency(reportMetrics.grossSales)}
             </div>
-            <span className="text-[11px] text-muted-foreground">Margin: {margin}%</span>
-          </div>
-
-          <div className="p-4 rounded-xl border bg-slate-50">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Total Activity</span>
-            <div className="text-2xl font-extrabold text-slate-900 mt-1">{filteredTransactions.length}</div>
-            <span className="text-[11px] text-muted-foreground">Total verified entries</span>
-          </div>
-        </div>
-
-        {/* Category Breakdown (2 columns) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Revenue Breakdown */}
-          <div className="border rounded-xl p-4 bg-slate-50/50">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
-              <TrendingUp className="h-4 w-4 text-emerald-600" /> Revenue by Category
-            </h3>
-            {Object.keys(revenueByCategory).length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">No sales recorded for this period.</p>
-            ) : (
-              <div className="divide-y text-xs">
-                {Object.entries(revenueByCategory).map(([cat, amt]) => (
-                  <div key={cat} className="py-2 flex justify-between">
-                    <span className="capitalize text-slate-700">{cat}</span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(amt)}</span>
-                  </div>
-                ))}
-              </div>
+            {reportMetrics.discounts > 0 && (
+              <span className="text-[10px] text-rose-600 font-medium">
+                -{formatCurrency(reportMetrics.discounts)} disc
+              </span>
             )}
           </div>
 
-          {/* Expense Breakdown */}
-          <div className="border rounded-xl p-4 bg-slate-50/50">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
-              <TrendingDown className="h-4 w-4 text-rose-600" /> Expenses by Category
-            </h3>
-            {Object.keys(expensesByCategory).length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">No expenses logged for this period.</p>
-            ) : (
-              <div className="divide-y text-xs">
-                {Object.entries(expensesByCategory).map(([cat, amt]) => (
-                  <div key={cat} className="py-2 flex justify-between">
-                    <span className="capitalize text-slate-700">{cat}</span>
-                    <span className="font-semibold text-slate-900">{formatCurrency(amt)}</span>
-                  </div>
-                ))}
+          <div>
+            <span className="text-[11px] font-semibold text-emerald-700 uppercase">Net Sales</span>
+            <div className="text-lg sm:text-xl font-extrabold text-emerald-700 mt-0.5">
+              {formatCurrency(reportMetrics.netSales)}
+            </div>
+            <span className="text-[10px] text-emerald-700/80">Realized revenue</span>
+          </div>
+
+          <div>
+            <span className="text-[11px] font-semibold text-blue-700 uppercase">Purchases & Expenses</span>
+            <div className="text-lg sm:text-xl font-bold text-slate-900 mt-0.5">
+              {formatCurrency(reportMetrics.totalPurchases + reportMetrics.totalExpenses)}
+            </div>
+            <span className="text-[10px] text-slate-500">
+              {formatCurrency(reportMetrics.totalPurchases)} stock + {formatCurrency(reportMetrics.totalExpenses)} opex
+            </span>
+          </div>
+
+          <div className="bg-emerald-100/60 p-2.5 rounded-lg border border-emerald-300">
+            <span className="text-[11px] font-bold text-emerald-900 uppercase">Estimated Net Profit</span>
+            <div className={`text-xl sm:text-2xl font-black mt-0.5 ${reportMetrics.netProfit >= 0 ? "text-emerald-800" : "text-rose-700"}`}>
+              {formatCurrency(reportMetrics.netProfit)}
+            </div>
+            <span className="text-[10px] font-semibold text-emerald-800">
+              Margin: {reportMetrics.marginPercent}%
+            </span>
+          </div>
+        </div>
+
+        {/* Section 1: Sales, Discounts & Payment Distribution */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 border-b pb-1 flex items-center gap-1.5">
+            <Banknote className="h-4 w-4 text-emerald-600" /> 1. Sales & Revenue Breakdown
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-slate-600">Total Gross Sales:</span>
+                <span className="font-bold text-slate-900">{formatCurrency(reportMetrics.grossSales)}</span>
               </div>
-            )}
+              <div className="flex justify-between py-1 border-b text-rose-600">
+                <span>Discounts Offered:</span>
+                <span className="font-semibold">- {formatCurrency(reportMetrics.discounts)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b font-extrabold text-sm text-emerald-700 bg-emerald-50/50 px-2 rounded">
+                <span>Net Sales Revenue:</span>
+                <span>{formatCurrency(reportMetrics.netSales)}</span>
+              </div>
+              {reportMetrics.otherIncome > 0 && (
+                <div className="flex justify-between py-1 border-b text-blue-700">
+                  <span>Other Income (Tips/Corkage/Fees):</span>
+                  <span className="font-semibold">+{formatCurrency(reportMetrics.otherIncome)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-slate-600">Cash Sales Collected:</span>
+                <span className="font-bold text-emerald-700">{formatCurrency(reportMetrics.cashSales)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-slate-600">Credit / Debt Sales:</span>
+                <span className="font-bold text-amber-700">{formatCurrency(reportMetrics.creditSales)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b">
+                <span className="text-slate-600">Outstanding Unpaid Debts:</span>
+                <span className="font-bold text-rose-600">{formatCurrency(reportMetrics.outstandingDebts)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Credit sales debtor list if any */}
+          {reportMetrics.creditTransactions.length > 0 && (
+            <div className="mt-2 p-3 bg-amber-50/70 border border-amber-200 rounded-lg text-xs space-y-1">
+              <div className="font-bold text-amber-900">Outstanding Customer Credit from this Period:</div>
+              <ul className="list-disc list-inside text-amber-800 space-y-0.5">
+                {reportMetrics.creditTransactions.map((c) => (
+                  <li key={c.id}>
+                    <strong>{c.customerName || "Customer"}</strong>: {formatCurrency(c.amount)} ({c.description || "Unspecified bill"})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        {/* Section 2: Purchases (Food/Drink Raw Materials) vs Operating Expenses */}
+        <div className="space-y-3">
+          <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 border-b pb-1 flex items-center gap-1.5">
+            <ShoppingCart className="h-4 w-4 text-blue-600" /> 2. Outflows: Purchases (COGS) vs Operating Expenses (OPEX)
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Purchases */}
+            <div className="space-y-2 text-xs">
+              <div className="font-bold text-slate-800 text-xs uppercase text-blue-800">
+                Purchases (Raw Materials & Stock) - Total: {formatCurrency(reportMetrics.totalPurchases)}
+              </div>
+              {Object.keys(reportMetrics.purchasesByCategory).length === 0 ? (
+                <p className="text-muted-foreground italic">No stock purchases recorded</p>
+              ) : (
+                Object.entries(reportMetrics.purchasesByCategory).map(([cat, amt]) => (
+                  <div key={cat} className="flex justify-between py-1 border-b">
+                    <span className="text-slate-600 capitalize">{cat.replace("purchase-", "").replace("-", " ")}:</span>
+                    <span className="font-medium text-slate-900">{formatCurrency(amt)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Expenses */}
+            <div className="space-y-2 text-xs">
+              <div className="font-bold text-slate-800 text-xs uppercase text-rose-800">
+                Operating Expenses (Overheads) - Total: {formatCurrency(reportMetrics.totalExpenses)}
+              </div>
+              {Object.keys(reportMetrics.expensesByCategory).length === 0 ? (
+                <p className="text-muted-foreground italic">No operating expenses recorded</p>
+              ) : (
+                Object.entries(reportMetrics.expensesByCategory).map(([cat, amt]) => (
+                  <div key={cat} className="flex justify-between py-1 border-b">
+                    <span className="text-slate-600 capitalize">{cat.replace("opex-", "").replace("-", " ")}:</span>
+                    <span className="font-medium text-slate-900">{formatCurrency(amt)}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Itemized Transactions Table */}
-        <div className="mb-8">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 mb-3">
-            Itemized Audit Ledger ({filteredTransactions.length} items)
-          </h3>
-          <div className="overflow-x-auto border rounded-xl">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] border-b">
-                <tr>
-                  <th className="py-2.5 px-3">Date / Time</th>
-                  <th className="py-2.5 px-3">Description</th>
-                  <th className="py-2.5 px-3">Sector</th>
-                  <th className="py-2.5 px-3">Category</th>
-                  <th className="py-2.5 px-3">Logged By</th>
-                  <th className="py-2.5 px-3 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-slate-800">
-                {filteredTransactions.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-6 text-muted-foreground italic">
-                      No transactions found for this interval.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredTransactions.map((tx) => (
-                    <tr key={tx.id} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 whitespace-nowrap">
-                        {new Date(tx.date).toLocaleDateString()}
-                      </td>
-                      <td className="py-2.5 px-3 font-medium">
-                        {tx.description || tx.category}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100">
-                          {tx.department?.name || "General"}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 capitalize text-slate-600">{tx.category}</td>
-                      <td className="py-2.5 px-3 text-slate-600">{tx.user?.name || "Staff"}</td>
-                      <td
-                        className={`py-2.5 px-3 text-right font-bold whitespace-nowrap ${
-                          tx.type === "INCOME" ? "text-emerald-600" : "text-slate-900"
-                        }`}
-                      >
-                        {tx.type === "INCOME" ? "+" : "-"}
-                        {formatCurrency(tx.amount)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {/* Section 3: Stock Management Reconciliation */}
+        {(filteredStockRecords.length > 0 || reportMetrics.closingStock > 0) && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 border-b pb-1 flex items-center gap-1.5">
+              <Boxes className="h-4 w-4 text-indigo-600" /> 3. Food & Beverage Stock Ledger
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100 text-center text-xs">
+              <div>
+                <span className="text-slate-500">Opening Stock</span>
+                <div className="font-bold text-slate-900 mt-0.5">{formatCurrency(reportMetrics.openingStock)}</div>
+              </div>
+              <div>
+                <span className="text-blue-700">+ Purchases</span>
+                <div className="font-bold text-blue-700 mt-0.5">+{formatCurrency(reportMetrics.newStockPurchased)}</div>
+              </div>
+              <div>
+                <span className="text-rose-700">- Stock Used</span>
+                <div className="font-bold text-rose-700 mt-0.5">-{formatCurrency(reportMetrics.stockUsed)}</div>
+              </div>
+              <div>
+                <span className="text-amber-700">- Damaged</span>
+                <div className="font-bold text-amber-700 mt-0.5">
+                  {reportMetrics.damagedStock > 0 ? `-${formatCurrency(reportMetrics.damagedStock)}` : "0 FCFA"}
+                </div>
+              </div>
+              <div className="col-span-2 sm:col-span-1 bg-emerald-100 p-1.5 rounded font-extrabold text-emerald-900">
+                <span>Closing Stock</span>
+                <div className="text-sm">{formatCurrency(reportMetrics.closingStock)}</div>
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Section 4: Daily Cash Reconciliation (Cash to Hand Over) */}
+        <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-wider text-amber-950 flex items-center gap-2">
+              <HandCoins className="h-5 w-5 text-amber-700" /> 4. Cash Reconciliation: Cash to Hand Over
+            </h2>
+            <div className="text-xl sm:text-2xl font-black text-amber-900">
+              {formatCurrency(reportMetrics.cashToHandOver)}
+            </div>
+          </div>
+          <p className="text-xs text-amber-800">
+            Formula: <strong>Cash Sales ({formatCurrency(reportMetrics.cashSales)})</strong>
+            {reportMetrics.otherIncome > 0 && ` + Other Income (${formatCurrency(reportMetrics.otherIncome)})`}
+            {" "}- <strong>Cash Purchases ({formatCurrency(reportMetrics.totalPurchases)})</strong>
+            {" "}- <strong>Operating Expenses ({formatCurrency(reportMetrics.totalExpenses)})</strong>
+            {" "} = <strong>{formatCurrency(reportMetrics.cashToHandOver)}</strong> to be handed over to management.
+          </p>
         </div>
 
-        {/* Verification & Signature Block for Boss & Accountant */}
-        <div className="grid grid-cols-2 gap-12 pt-8 border-t text-xs">
-          <div className="space-y-10">
-            <p className="font-semibold text-slate-700">Prepared & Certified by Employee / Accountant:</p>
-            <div className="border-b border-dashed border-slate-400 w-3/4" />
+        {/* Signatures & Approval Blocks */}
+        <div className="pt-8 border-t-2 border-slate-300 grid grid-cols-2 gap-8 text-xs">
+          <div className="space-y-8">
+            <div>
+              <p className="font-bold text-slate-800">Shift Operator / Cashier:</p>
+              <p className="text-muted-foreground">{currentUser?.name} ({currentUser?.email})</p>
+            </div>
+            <div className="border-b border-dashed border-slate-400 w-48"></div>
             <p className="text-[11px] text-muted-foreground">Signature & Date</p>
           </div>
 
-          <div className="space-y-10 text-right">
-            <p className="font-semibold text-slate-700">Reviewed & Approved by Boss (Admin):</p>
-            <div className="border-b border-dashed border-slate-400 w-3/4 ml-auto" />
-            <p className="text-[11px] text-muted-foreground">Executive Stamp & Date</p>
+          <div className="space-y-8 text-right flex flex-col items-end">
+            <div>
+              <p className="font-bold text-slate-800">Manager / Business Owner Approval:</p>
+              <p className="text-muted-foreground">Accounts Received & Verified</p>
+            </div>
+            <div className="border-b border-dashed border-slate-400 w-48"></div>
+            <p className="text-[11px] text-muted-foreground">Signature & Date</p>
           </div>
         </div>
       </div>

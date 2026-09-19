@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CalendarIcon, Loader2, Building2 } from "lucide-react";
+import { CalendarIcon, Loader2, Building2, ShoppingCart, ReceiptText, Tag, Banknote, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { useRouter, useSearchParams } from "next/navigation";
 import useFetch from "@/hooks/use-fetch";
@@ -63,7 +63,7 @@ export function AddTransactionForm({
         ? {
             type: initialData.type,
             amount: initialData.amount.toString(),
-            description: initialData.description,
+            description: initialData.description || "",
             departmentId: initialData.departmentId || defaultDeptId,
             accountId: initialData.accountId || "",
             category: initialData.category,
@@ -74,11 +74,12 @@ export function AddTransactionForm({
             }),
           }
         : {
-            type: "EXPENSE",
+            type: "PURCHASE",
             amount: "",
             description: "",
             departmentId: defaultDeptId,
             accountId: accounts.find((ac) => ac.isDefault)?.id || accounts[0]?.id || "",
+            category: "purchase-meat",
             date: new Date(),
             isRecurring: false,
           },
@@ -108,12 +109,16 @@ export function AddTransactionForm({
     if (scannedData) {
       setValue("amount", scannedData.amount.toString());
       setValue("date", new Date(scannedData.date));
+      if (scannedData.type) {
+        setValue("type", scannedData.type);
+      }
       if (scannedData.description) {
         setValue("description", scannedData.description);
       }
       if (scannedData.category) {
         setValue("category", scannedData.category);
       }
+      toast.success("Receipt details extracted and filled into form!");
     }
   };
 
@@ -134,9 +139,11 @@ export function AddTransactionForm({
   const isRecurring = watch("isRecurring");
   const date = watch("date");
 
+  // Filter matching categories or fallback
   const filteredCategories = categories.filter(
     (category) => category.type === type
   );
+  const displayCategories = filteredCategories.length > 0 ? filteredCategories : categories;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -177,32 +184,58 @@ export function AddTransactionForm({
 
       {/* Transaction Type */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold">Entry Type</label>
+        <label className="text-sm font-semibold">Transaction Classification</label>
         <Select
-          onValueChange={(value) => setValue("type", value)}
+          onValueChange={(value) => {
+            setValue("type", value);
+            // Auto pick first matching category
+            const match = categories.find((c) => c.type === value);
+            if (match) setValue("category", match.id);
+          }}
           defaultValue={type}
         >
-          <SelectTrigger>
+          <SelectTrigger className="h-11">
             <SelectValue placeholder="Select type" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="EXPENSE">Expense / Purchase</SelectItem>
-            <SelectItem value="INCOME">Income / Customer Sale</SelectItem>
+            <SelectItem value="PURCHASE">
+              📦 Purchases / Raw Stock (Meat, Rice, Drinks, Vegetables)
+            </SelectItem>
+            <SelectItem value="EXPENSE">
+              💡 Operating Expenses / Overheads (Electricity, Fuel, Repairs, Cleaning)
+            </SelectItem>
+            <SelectItem value="SALE">
+              💵 Direct Customer Sale
+            </SelectItem>
+            <SelectItem value="DISCOUNT">
+              🏷️ Discount Given
+            </SelectItem>
+            <SelectItem value="INCOME">
+              💰 Other Income / Non-operating
+            </SelectItem>
           </SelectContent>
         </Select>
         {errors.type && (
           <p className="text-sm text-red-500">{errors.type.message}</p>
         )}
+        <p className="text-xs text-muted-foreground">
+          {type === "PURCHASE" && "Recorded as Cost of Goods Sold (Raw food, beverage ingredients, kitchen supplies)."}
+          {type === "EXPENSE" && "Recorded as Operating Overhead (Electricity, transport, generator fuel, maintenance)."}
+          {type === "SALE" && "Direct customer sales or dining bills."}
+          {type === "DISCOUNT" && "Reductions or concessions granted to customers or promotions."}
+        </p>
       </div>
 
       {/* Amount & Category */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="space-y-2">
-          <label className="text-sm font-semibold">Amount (FCFA)</label>
+          <label className="text-sm font-semibold">Amount (FCFA) *</label>
           <Input
             type="number"
-            step="1"
-            placeholder="e.g. 15000"
+            step="any"
+            min="0"
+            placeholder="e.g. 45000"
+            className="text-lg font-bold h-11"
             {...register("amount")}
           />
           {errors.amount && (
@@ -211,18 +244,18 @@ export function AddTransactionForm({
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-semibold">Category</label>
+          <label className="text-sm font-semibold">Specific Category *</label>
           <Select
             onValueChange={(value) => setValue("category", value)}
             defaultValue={getValues("category")}
           >
-            <SelectTrigger>
+            <SelectTrigger className="h-11">
               <SelectValue placeholder="Select category" />
             </SelectTrigger>
             <SelectContent>
-              {filteredCategories.map((category) => (
-                <SelectItem key={category.id} value={category.id}>
-                  {category.name}
+              {displayCategories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -235,13 +268,13 @@ export function AddTransactionForm({
 
       {/* Date */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold">Date</label>
+        <label className="text-sm font-semibold">Transaction Date *</label>
         <Popover>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
               className={cn(
-                "w-full pl-3 text-left font-normal",
+                "w-full pl-3 text-left font-normal h-11",
                 !date && "text-muted-foreground"
               )}
             >
@@ -253,7 +286,7 @@ export function AddTransactionForm({
             <Calendar
               mode="single"
               selected={date}
-              onSelect={(d) => setValue("date", d)}
+              onSelect={(d) => setValue("date", d || new Date())}
               disabled={(d) =>
                 d > new Date() || d < new Date("1900-01-01")
               }
@@ -268,8 +301,8 @@ export function AddTransactionForm({
 
       {/* Description */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold">Description / Notes</label>
-        <Input placeholder="e.g. Daily beverages intake or shift food sales" {...register("description")} />
+        <label className="text-sm font-semibold">Description / Supplier / Merchant / Details</label>
+        <Input placeholder="e.g. Purchased 20kg beef from Central Market, or ENEO electricity recharge" {...register("description")} />
         {errors.description && (
           <p className="text-sm text-red-500">{errors.description.message}</p>
         )}
@@ -278,18 +311,18 @@ export function AddTransactionForm({
       {/* Optional Bank / Cash Account */}
       {accounts.length > 0 && (
         <div className="space-y-2">
-          <label className="text-sm font-semibold">Account (Optional)</label>
+          <label className="text-sm font-semibold">Account / Cash Drawer Paid From</label>
           <Select
             onValueChange={(value) => setValue("accountId", value)}
             defaultValue={getValues("accountId")}
           >
-            <SelectTrigger>
-              <SelectValue placeholder="Select account (or cash)" />
+            <SelectTrigger className="h-11">
+              <SelectValue placeholder="Select account (or cash drawer)" />
             </SelectTrigger>
             <SelectContent>
               {accounts.map((account) => (
                 <SelectItem key={account.id} value={account.id}>
-                  {account.name}
+                  {account.name} ({account.type}) - Balance: {account.balance} FCFA
                 </SelectItem>
               ))}
             </SelectContent>
@@ -298,11 +331,11 @@ export function AddTransactionForm({
       )}
 
       {/* Recurring Toggle */}
-      <div className="flex flex-row items-center justify-between rounded-lg border p-4">
+      <div className="flex flex-row items-center justify-between rounded-lg border p-4 bg-slate-50">
         <div className="space-y-0.5">
           <label className="text-base font-medium">Recurring Entry</label>
           <div className="text-sm text-muted-foreground">
-            Schedule this entry to recur automatically (e.g. monthly rent or daily supplies)
+            Schedule this entry to recur automatically (e.g. monthly rent or recurring suppliers)
           </div>
         </div>
         <Switch
@@ -347,7 +380,7 @@ export function AddTransactionForm({
         >
           Cancel
         </Button>
-        <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white" disabled={transactionLoading}>
+        <Button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold h-11" disabled={transactionLoading}>
           {transactionLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -356,7 +389,7 @@ export function AddTransactionForm({
           ) : editMode ? (
             "Update Entry"
           ) : (
-            "Record Operation Entry"
+            "Save Operation Entry"
           )}
         </Button>
       </div>
