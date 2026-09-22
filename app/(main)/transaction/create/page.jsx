@@ -2,8 +2,11 @@ import { getUserAccounts } from "@/actions/dashboard";
 import { defaultCategories } from "@/data/categories";
 import { AddTransactionForm } from "../_components/transaction-form";
 import { SalesEntryForm } from "../_components/sales-entry-form";
+import { ItemizedSaleForm } from "../_components/itemized-sale-form";
 import { getTransaction } from "@/actions/transaction";
 import { getDepartments } from "@/actions/organization";
+import { getDepartmentStockItems } from "@/actions/stock";
+import { getMenuItems } from "@/actions/restaurant";
 import { getSessionUser } from "@/actions/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Banknote, ShoppingCart, ArrowLeft } from "lucide-react";
@@ -11,10 +14,12 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export default async function AddTransactionPage({ searchParams }) {
-  const [accounts, departments, currentUser] = await Promise.all([
+  const [accounts, departments, currentUser, stockItems, menuItems] = await Promise.all([
     getUserAccounts(),
     getDepartments(),
     getSessionUser(),
+    getDepartmentStockItems(),
+    getMenuItems(),
   ]);
 
   const params = await searchParams;
@@ -74,10 +79,12 @@ export default async function AddTransactionPage({ searchParams }) {
           </TabsList>
 
           <TabsContent value="sales" className="space-y-4">
+            {menuItems.length > 0 && <ItemizedSaleForm departmentId={currentUser?.role === "ADMIN" ? departments?.[0]?.id : currentUser?.departmentId} menuItems={menuItems} accounts={accounts || []} />}
             <SalesEntryForm
               departments={departments || []}
               accounts={accounts || []}
               currentUser={currentUser}
+              stockItems={stockItems || []}
             />
           </TabsContent>
 
@@ -89,6 +96,7 @@ export default async function AddTransactionPage({ searchParams }) {
               categories={defaultCategories}
               editMode={false}
               initialData={null}
+              stockItems={stockItems || []}
             />
           </TabsContent>
         </Tabs>

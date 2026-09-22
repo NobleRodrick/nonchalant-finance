@@ -37,6 +37,7 @@ export function AddTransactionForm({
   categories = [],
   editMode = false,
   initialData = null,
+  stockItems = [],
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,6 +67,8 @@ export function AddTransactionForm({
             description: initialData.description || "",
             departmentId: initialData.departmentId || defaultDeptId,
             accountId: initialData.accountId || "",
+            stockItemId: initialData.stockItemId || "",
+            stockQuantity: initialData.stockQuantity?.toString() || "",
             category: initialData.category,
             date: new Date(initialData.date),
             isRecurring: initialData.isRecurring,
@@ -79,6 +82,8 @@ export function AddTransactionForm({
             description: "",
             departmentId: defaultDeptId,
             accountId: accounts.find((ac) => ac.isDefault)?.id || accounts[0]?.id || "",
+            stockItemId: "",
+            stockQuantity: "",
             category: "purchase-meat",
             date: new Date(),
             isRecurring: false,
@@ -266,6 +271,26 @@ export function AddTransactionForm({
         </div>
       </div>
 
+      {type === "PURCHASE" && stockItems.length > 0 && (
+        <div className="grid gap-6 md:grid-cols-2 rounded-lg border border-blue-200 bg-blue-50/50 p-4">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">Stock Item</label>
+            <Select onValueChange={(value) => setValue("stockItemId", value)} defaultValue={getValues("stockItemId")}>
+              <SelectTrigger className="h-11 bg-white"><SelectValue placeholder="Select purchased stock item" /></SelectTrigger>
+              <SelectContent>
+                {stockItems.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} ({item.unit})</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">The purchase will increase this item&apos;s current quantity.</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">Purchased Quantity</label>
+            <Input type="number" min="0.01" step="any" placeholder="e.g. 20" className="h-11 bg-white" {...register("stockQuantity")} />
+            <p className="text-xs text-muted-foreground">Use the item&apos;s unit, such as bottles, kg, crates, or rooms.</p>
+          </div>
+        </div>
+      )}
+
       {/* Date */}
       <div className="space-y-2">
         <label className="text-sm font-semibold">Transaction Date *</label>
@@ -307,6 +332,19 @@ export function AddTransactionForm({
           <p className="text-sm text-red-500">{errors.description.message}</p>
         )}
       </div>
+
+      {type === "PURCHASE" && (
+        <div className="grid gap-6 rounded-lg border border-blue-200 bg-blue-50/50 p-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">Supplier</label>
+            <Input placeholder="Supplier or market name" {...register("purchaseSupplier")} />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-semibold">Invoice / Reference</label>
+            <Input placeholder="Receipt or invoice reference" {...register("purchaseReference")} />
+          </div>
+        </div>
+      )}
 
       {/* Optional Bank / Cash Account */}
       {accounts.length > 0 && (

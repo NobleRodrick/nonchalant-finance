@@ -83,8 +83,48 @@ export async function createTransaction(data) {
           departmentId: targetDepartmentId,
           userId: user.id,
           accountId: data.accountId || null,
+          purchaseSupplier: type === "PURCHASE" ? data.purchaseSupplier?.trim() || null : null,
+          purchaseReference: type === "PURCHASE" ? data.purchaseReference?.trim() || null : null,
         },
       });
+
+      if (type === "PURCHASE" && data.stockItemId) {
+        const stockItem = await tx.departmentStockItem.findFirst({
+          where: {
+            id: data.stockItemId,
+            organizationId: user.organizationId,
+            departmentId: targetDepartmentId,
+            isActive: true,
+          },
+        });
+
+        if (!stockItem) throw new Error("Selected stock item is not in this department");
+
+        const stockQuantity = Number(data.stockQuantity || effectiveAmount);
+        if (!Number.isFinite(stockQuantity) || stockQuantity <= 0) {
+          throw new Error("Purchased stock quantity must be greater than zero");
+        }
+
+        await tx.stockMovement.create({
+          data: {
+            type: "PURCHASE",
+            quantity: stockQuantity,
+            unitCost: effectiveAmount / stockQuantity,
+            date: data.date ? new Date(data.date) : new Date(),
+            notes: data.description || "Purchase received",
+            stockItemId: stockItem.id,
+            transactionId: newTransaction.id,
+            organizationId: user.organizationId,
+            departmentId: targetDepartmentId,
+            userId: user.id,
+          },
+        });
+
+        await tx.departmentStockItem.update({
+          where: { id: stockItem.id },
+          data: { currentQuantity: { increment: stockQuantity } },
+        });
+      }
 
       // Update account balance
       if (data.accountId && account) {

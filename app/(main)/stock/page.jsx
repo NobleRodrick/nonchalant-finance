@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getDepartments } from "@/actions/organization";
-import { getLatestStockRecord, getDepartmentStockRecords } from "@/actions/stock";
+import { getLatestStockRecord, getDepartmentStockRecords, getDepartmentStockItems } from "@/actions/stock";
 import { DailyStockForm } from "./_components/daily-stock-form";
+import { StockItemsPanel } from "./_components/stock-items-panel";
 import { Boxes, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -14,10 +15,11 @@ export default async function StockPage() {
     redirect("/login");
   }
 
-  const [departments, latestRecord, history] = await Promise.all([
+  const [departments, latestRecord, history, items] = await Promise.all([
     getDepartments(),
     getLatestStockRecord(user.role !== "ADMIN" ? user.departmentId : null),
     getDepartmentStockRecords(user.role !== "ADMIN" ? user.departmentId : null, 30),
+    getDepartmentStockItems(user.role !== "ADMIN" ? user.departmentId : null),
   ]);
 
   return (
@@ -45,6 +47,10 @@ export default async function StockPage() {
         currentUser={user}
         latestRecord={latestRecord}
         history={history || []}
+      />
+      <StockItemsPanel
+        departmentId={user.role !== "ADMIN" ? user.departmentId : departments?.[0]?.id}
+        items={items || []}
       />
     </div>
   );

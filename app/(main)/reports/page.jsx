@@ -5,6 +5,7 @@ import { getDashboardData } from "@/actions/dashboard";
 import { getDepartments } from "@/actions/organization";
 import { getSessionUser } from "@/actions/auth";
 import { getDepartmentStockRecords } from "@/actions/stock";
+import { getRestaurantReportData } from "@/actions/restaurant";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,7 @@ export default function ReportsPage() {
   const [departments, setDepartments] = useState([]);
   const [allTransactions, setAllTransactions] = useState([]);
   const [allStockRecords, setAllStockRecords] = useState([]);
+  const [restaurantReportData, setRestaurantReportData] = useState({ saleLines: [], debts: [], debtPayments: [], handovers: [], stockMovements: [] });
 
   // Filter states
   const [period, setPeriod] = useState("today");
@@ -59,17 +61,19 @@ export default function ReportsPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [user, depts, txns, stock] = await Promise.all([
+        const [user, depts, txns, stock, restaurantData] = await Promise.all([
           getSessionUser(),
           getDepartments(),
           getDashboardData("all"),
           getDepartmentStockRecords(null, 100),
+          getRestaurantReportData(),
         ]);
 
         setCurrentUser(user);
         setDepartments(depts || []);
         setAllTransactions(txns || []);
         setAllStockRecords(stock || []);
+        setRestaurantReportData(restaurantData || { saleLines: [], debts: [], debtPayments: [], handovers: [], stockMovements: [] });
 
         if (user?.role !== "ADMIN" && user?.departmentId) {
           setSelectedDeptId(user.departmentId);
@@ -142,6 +146,18 @@ export default function ReportsPage() {
     });
   }, [allStockRecords, dateInterval, selectedDeptId]);
 
+  const filteredRestaurantData = useMemo(() => {
+    const withinPeriod = (value) => isWithinInterval(new Date(value), { start: dateInterval.start, end: dateInterval.end });
+    const withinDepartment = (value) => selectedDeptId === "all" || value.departmentId === selectedDeptId;
+    return {
+      saleLines: (restaurantReportData.saleLines || []).filter((line) => withinPeriod(line.createdAt) && withinDepartment(line)),
+      debts: (restaurantReportData.debts || []).filter((debt) => withinPeriod(debt.date) && withinDepartment(debt)),
+      debtPayments: (restaurantReportData.debtPayments || []).filter((payment) => withinPeriod(payment.date) && withinDepartment(payment)),
+      handovers: (restaurantReportData.handovers || []).filter((handover) => withinPeriod(handover.date) && withinDepartment(handover)),
+      stockMovements: (restaurantReportData.stockMovements || []).filter((movement) => withinPeriod(movement.date) && withinDepartment(movement)),
+    };
+  }, [restaurantReportData, dateInterval, selectedDeptId]);
+
   // Comprehensive Financial & Operational Calculations
   const reportMetrics = useMemo(() => {
     let grossSales = 0;
@@ -153,6 +169,8 @@ export default function ReportsPage() {
     let totalPurchases = 0;
     let totalExpenses = 0;
     let outstandingDebts = 0;
+    const cashHandedOver = filteredRestaurantData.handovers.reduce((sum, handover) => sum + Number(handover.amount || 0), 0);
+    const debtPayments = filteredRestaurantData.debtPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
     const creditTransactions = [];
     const salesByCategory = {};
@@ -239,6 +257,11 @@ export default function ReportsPage() {
       marginPercent,
       cashToHandOver,
       outstandingDebts,
+      cashHandedOver,
+      cashRemaining: Math.max(0, cashSales + otherIncome - totalPurchases - totalExpenses - cashHandedOver),
+      debtPayments,
+      itemizedSaleLines: filteredRestaurantData.saleLines,
+      stockMovements: filteredRestaurantData.stockMovements,
       creditTransactions,
       salesByCategory,
       purchasesByCategory,
@@ -250,7 +273,7 @@ export default function ReportsPage() {
       closingStock,
       txCount: filteredTransactions.length,
     };
-  }, [filteredTransactions, filteredStockRecords]);
+  }, [filteredTransactions, filteredStockRecords, filteredRestaurantData]);
 
   // Print function (opens browser print dialog which formats as PDF export)
   const handlePrint = () => {
@@ -273,12 +296,15 @@ export default function ReportsPage() {
 ✨ *Net Sales:* ${formatCurrency(reportMetrics.netSales)}
 💰 *Cash Sales Received:* ${formatCurrency(reportMetrics.cashSales)}
 💳 *Credit / Debts:* ${formatCurrency(reportMetrics.creditSales)}
+💵 *Debt Payments Collected:* ${formatCurrency(reportMetrics.debtPayments)}
 
 📦 *Food Purchases (COGS):* ${formatCurrency(reportMetrics.totalPurchases)}
 💡 *Operating Expenses:* ${formatCurrency(reportMetrics.totalExpenses)}
 📈 *Net Estimated Profit:* ${formatCurrency(reportMetrics.netProfit)} (${reportMetrics.marginPercent}%)
 
 🚨 *Cash to Hand Over Tonight:* ${formatCurrency(reportMetrics.cashToHandOver)}
+✅ *Cash Actually Handed Over:* ${formatCurrency(reportMetrics.cashHandedOver)}
+💼 *Cash Remaining:* ${formatCurrency(reportMetrics.cashRemaining)}
 ${reportMetrics.closingStock > 0 ? `📦 *Closing Stock Remaining:* ${formatCurrency(reportMetrics.closingStock)}\n` : ""}
 Generated on ${new Date().toLocaleString()} by ${currentUser?.name || "Shift Manager"}`;
 
@@ -355,7 +381,7 @@ Generated on ${new Date().toLocaleString()} by ${currentUser?.name || "Shift Man
                 onChange={(e) => setPeriod(e.target.value)}
               >
                 <option value="today">📅 Daily Closing Report (Today)</option>
-                <option value="yesterday">📅 Yesterday's Shift</option>
+                <option value="yesterday">📅 Yesterday&apos;s Shift</option>
                 <option value="this-week">📊 Weekly Performance Report</option>
                 <option value="last-7">📊 Rolling 7 Days</option>
                 <option value="this-month">📑 Monthly Financial Statement</option>
@@ -596,6 +622,11 @@ Generated on ${new Date().toLocaleString()} by ${currentUser?.name || "Shift Man
               {formatCurrency(reportMetrics.cashToHandOver)}
             </div>
           </div>
+          <div className="grid gap-2 border-t border-amber-200 pt-3 text-xs sm:grid-cols-3">
+            <div className="flex justify-between"><span>Expected cash generated:</span><strong>{formatCurrency(reportMetrics.cashSales + reportMetrics.otherIncome)}</strong></div>
+            <div className="flex justify-between"><span>Actually handed to CEO:</span><strong>{formatCurrency(reportMetrics.cashHandedOver)}</strong></div>
+            <div className="flex justify-between"><span>Cash remaining:</span><strong>{formatCurrency(reportMetrics.cashRemaining)}</strong></div>
+          </div>
           <p className="text-xs text-amber-800">
             Formula: <strong>Cash Sales ({formatCurrency(reportMetrics.cashSales)})</strong>
             {reportMetrics.otherIncome > 0 && ` + Other Income (${formatCurrency(reportMetrics.otherIncome)})`}
@@ -604,6 +635,13 @@ Generated on ${new Date().toLocaleString()} by ${currentUser?.name || "Shift Man
             {" "} = <strong>{formatCurrency(reportMetrics.cashToHandOver)}</strong> to be handed over to management.
           </p>
         </div>
+
+        {reportMetrics.itemizedSaleLines.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 border-b pb-1">5. Menu Item Sales Traceability</h2>
+            <div className="overflow-x-auto"><table className="w-full text-xs"><thead className="border-b bg-slate-50 text-left"><tr><th className="p-2">Food item</th><th className="p-2 text-right">Qty</th><th className="p-2 text-right">Unit price</th><th className="p-2 text-right">Total</th><th className="p-2">Date</th></tr></thead><tbody className="divide-y">{reportMetrics.itemizedSaleLines.map((line) => <tr key={line.id}><td className="p-2">{line.menuItem?.name || "Menu item"}</td><td className="p-2 text-right">{Number(line.quantity)}</td><td className="p-2 text-right">{formatCurrency(line.unitPrice)}</td><td className="p-2 text-right font-semibold">{formatCurrency(line.totalAmount - line.discountAmount)}</td><td className="p-2">{format(new Date(line.createdAt), "PPP p")}</td></tr>)}</tbody></table></div>
+          </div>
+        )}
 
         {/* Signatures & Approval Blocks */}
         <div className="pt-8 border-t-2 border-slate-300 grid grid-cols-2 gap-8 text-xs">

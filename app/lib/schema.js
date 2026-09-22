@@ -21,6 +21,10 @@ export const transactionSchema = z
     date: z.date({ required_error: "Date is required" }),
     departmentId: z.string().optional(),
     accountId: z.string().optional(),
+    stockItemId: z.string().optional(),
+    stockQuantity: z.string().optional(),
+    purchaseSupplier: z.string().optional(),
+    purchaseReference: z.string().optional(),
     category: z.string().min(1, "Category is required"),
     isRecurring: z.boolean().default(false),
     recurringInterval: z

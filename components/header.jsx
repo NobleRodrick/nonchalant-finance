@@ -24,6 +24,9 @@ import {
   Briefcase,
   Boxes,
   Banknote,
+  Utensils,
+  HandCoins,
+  CreditCard,
 } from "lucide-react";
 
 export default async function Header() {
@@ -79,6 +82,27 @@ export default async function Header() {
                 <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-slate-700">
                   <Boxes className="h-4 w-4 text-indigo-600" />
                   <span className="hidden md:inline font-medium">Stock Control</span>
+                </Button>
+              </Link>
+
+              <Link href="/menu">
+                <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
+                  <Utensils className="h-4 w-4 text-emerald-600" />
+                  <span className="font-medium">Menu</span>
+                </Button>
+              </Link>
+
+              <Link href="/debts">
+                <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
+                  <CreditCard className="h-4 w-4 text-amber-600" />
+                  <span className="font-medium">Debts</span>
+                </Button>
+              </Link>
+
+              <Link href="/cash-handover">
+                <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
+                  <HandCoins className="h-4 w-4 text-blue-600" />
+                  <span className="font-medium">Handover</span>
                 </Button>
               </Link>
 
