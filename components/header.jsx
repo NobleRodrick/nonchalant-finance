@@ -3,6 +3,7 @@ import Image from "next/image";
 import { getCurrentUser } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth";
 import { Button } from "./ui/button";
+import { AppSidebar } from "./app-sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,21 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import {
-  LayoutDashboard,
-  PenBox,
-  FileText,
-  Users,
-  Layers,
   User,
   LogOut,
   Building2,
-  Shield,
-  Briefcase,
-  Boxes,
-  Banknote,
-  Utensils,
-  HandCoins,
-  CreditCard,
 } from "lucide-react";
 
 export default async function Header() {
@@ -38,10 +27,11 @@ export default async function Header() {
   };
 
   return (
-    <header className="fixed top-0 w-full bg-white/95 backdrop-blur-md z-50 border-b border-slate-200">
+    <header className="fixed top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         {/* Brand / Logo + Organization Title */}
         <div className="flex items-center space-x-3">
+          {user && <AppSidebar user={user} />}
           <Link href={user ? "/dashboard" : "/"} className="flex items-center space-x-2">
             <Image
               alt="Springer Finance"
@@ -65,89 +55,10 @@ export default async function Header() {
           )}
         </div>
 
-        {/* Navigation Actions */}
+        {/* Account Actions */}
         <div className="flex items-center space-x-2 sm:space-x-3">
           {user ? (
             <>
-              {/* Common Links */}
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-slate-700">
-                  <LayoutDashboard className="h-4 w-4 text-blue-600" />
-                  <span className="hidden md:inline font-medium">Dashboard</span>
-                </Button>
-              </Link>
-
-              {/* Stock Management Link */}
-              <Link href="/stock">
-                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-slate-700">
-                  <Boxes className="h-4 w-4 text-indigo-600" />
-                  <span className="hidden md:inline font-medium">Stock Control</span>
-                </Button>
-              </Link>
-
-              <Link href="/menu">
-                <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
-                  <Utensils className="h-4 w-4 text-emerald-600" />
-                  <span className="font-medium">Menu</span>
-                </Button>
-              </Link>
-
-              <Link href="/debts">
-                <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
-                  <CreditCard className="h-4 w-4 text-amber-600" />
-                  <span className="font-medium">Debts</span>
-                </Button>
-              </Link>
-
-              <Link href="/cash-handover">
-                <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
-                  <HandCoins className="h-4 w-4 text-blue-600" />
-                  <span className="font-medium">Handover</span>
-                </Button>
-              </Link>
-
-              {/* Boss-only links */}
-              {user.role === "ADMIN" && (
-                <>
-                  <Link href="/organization/employees">
-                    <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
-                      <Users className="h-4 w-4 text-indigo-600" />
-                      <span className="font-medium">Staff</span>
-                    </Button>
-                  </Link>
-                  <Link href="/organization/departments">
-                    <Button variant="ghost" size="sm" className="hidden lg:flex items-center gap-1.5 text-slate-700">
-                      <Layers className="h-4 w-4 text-purple-600" />
-                      <span className="font-medium">Departments</span>
-                    </Button>
-                  </Link>
-                </>
-              )}
-
-              {/* Reports Link */}
-              <Link href="/reports">
-                <Button variant="ghost" size="sm" className="flex items-center gap-1.5 text-slate-700">
-                  <FileText className="h-4 w-4 text-emerald-600" />
-                  <span className="hidden sm:inline font-medium">Reports</span>
-                </Button>
-              </Link>
-
-              {/* Record Sales Quick Button */}
-              <Link href="/transaction/create?tab=sales">
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5">
-                  <Banknote className="h-4 w-4" />
-                  <span className="hidden sm:inline">Record Sales</span>
-                </Button>
-              </Link>
-
-              {/* Record Transaction Button */}
-              <Link href="/transaction/create?tab=purchases">
-                <Button size="sm" variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50 hidden sm:flex items-center gap-1.5">
-                  <PenBox className="h-4 w-4" />
-                  <span>Purchases & Expenses</span>
-                </Button>
-              </Link>
-
               {/* User Dropdown Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
