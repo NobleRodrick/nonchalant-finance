@@ -16,6 +16,8 @@ import {
   User,
   LogOut,
   Building2,
+  Users,
+  Layers,
 } from "lucide-react";
 
 export default async function Header() {
