@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Button } from "./ui/button";
 import {
   Banknote,
@@ -31,7 +32,8 @@ const commonLinks = [
 ];
 
 export function AppSidebar({ user }) {
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const [open, setOpen] = useState(true);
   const isAdmin = user?.role === "ADMIN";
   const links = isAdmin
     ? [
@@ -40,6 +42,17 @@ export function AppSidebar({ user }) {
         { href: "/organization/departments", label: "Departments", icon: Layers, color: "text-purple-600" },
       ]
     : commonLinks;
+
+  const closeOnMobile = () => {
+    if (window.innerWidth < 1024) setOpen(false);
+  };
+
+  const linkClassName = (href, color) =>
+    `group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-colors ${
+      pathname === href || pathname.startsWith(`${href}/`)
+        ? "bg-slate-900 text-white shadow-sm"
+        : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+    }`;
 
   return (
     <>
@@ -65,7 +78,7 @@ export function AppSidebar({ user }) {
       )}
 
       <aside
-        className={`fixed bottom-0 left-0 top-16 z-50 flex w-72 flex-col border-r border-slate-200 bg-white shadow-xl transition-transform duration-200 lg:w-72 ${
+        className={`fixed bottom-0 left-0 top-16 z-50 flex h-[calc(100vh-4rem)] w-[min(18rem,calc(100vw-1rem))] flex-col overflow-hidden border-r border-slate-200 bg-white shadow-xl transition-transform duration-200 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -79,30 +92,30 @@ export function AppSidebar({ user }) {
           </Button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Main navigation">
-          <p className="px-3 pb-2 pt-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">Operations</p>
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-4 [scrollbar-color:#cbd5e1_transparent]" aria-label="Main navigation">
+          <p className="px-3 pb-3 pt-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">Operations</p>
           {links.slice(0, commonLinks.length).map(({ href, label, icon: Icon, color }) => (
-            <Link key={href} href={href} onClick={() => setOpen(false)} className="group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-950">
-              <Icon className={`h-4 w-4 ${color}`} />
+            <Link key={href} href={href} onClick={closeOnMobile} className={linkClassName(href, color)}>
+              <Icon className={`h-5 w-5 ${pathname === href || pathname.startsWith(`${href}/`) ? "text-white" : color}`} />
               <span>{label}</span>
-              <ChevronRight className="ml-auto h-3.5 w-3.5 text-slate-300 transition-transform group-hover:translate-x-0.5" />
+              <ChevronRight className={`ml-auto h-4 w-4 transition-transform group-hover:translate-x-0.5 ${pathname === href || pathname.startsWith(`${href}/`) ? "text-slate-300" : "text-slate-300"}`} />
             </Link>
           ))}
-          <Link href="/transaction/create?tab=sales" onClick={() => setOpen(false)} className="mt-3 flex items-center gap-3 rounded-lg bg-emerald-600 px-3 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700">
+          <Link href="/transaction/create?tab=sales" onClick={closeOnMobile} className="mt-4 flex items-center gap-3 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-emerald-700">
             <Banknote className="h-4 w-4" />
             <span>Record Sales</span>
           </Link>
-          <Link href="/transaction/create?tab=purchases" onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg border border-blue-200 px-3 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50">
+          <Link href="/transaction/create?tab=purchases" onClick={closeOnMobile} className="flex items-center gap-3 rounded-xl border border-blue-200 px-3 py-3 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50">
             <PenBox className="h-4 w-4" />
             <span>Purchases & Expenses</span>
           </Link>
 
           {isAdmin && (
             <>
-              <p className="px-3 pb-2 pt-6 text-[11px] font-bold uppercase tracking-wider text-slate-400">Administration</p>
+              <p className="px-3 pb-3 pt-8 text-[11px] font-bold uppercase tracking-wider text-slate-400">Administration</p>
               {links.slice(commonLinks.length).map(({ href, label, icon: Icon, color }) => (
-                <Link key={href} href={href} onClick={() => setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100">
-                  <Icon className={`h-4 w-4 ${color}`} />
+                <Link key={href} href={href} onClick={closeOnMobile} className={linkClassName(href, color)}>
+                  <Icon className={`h-5 w-5 ${pathname === href || pathname.startsWith(`${href}/`) ? "text-white" : color}`} />
                   <span>{label}</span>
                 </Link>
               ))}
