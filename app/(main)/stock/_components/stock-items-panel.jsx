@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createStockItem, recordStockMovement } from "@/actions/stock";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { toast } from "sonner";
 import { Boxes, Plus, ArrowDown, ArrowUp, Loader2 } from "lucide-react";
 
 export function StockItemsPanel({ departmentId, items = [] }) {
+  const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [movingItem, setMovingItem] = useState(null);
   const [name, setName] = useState("");
@@ -26,42 +28,51 @@ export function StockItemsPanel({ departmentId, items = [] }) {
   const submitItem = async (event) => {
     event.preventDefault();
     setCreating(true);
-    const result = await createStockItem({
-      departmentId,
-      name,
-      category,
-      unit,
-      trackingPeriod,
-      periodStart: trackingPeriod === "CUSTOM" ? periodStart : null,
-      periodEnd: trackingPeriod === "CUSTOM" ? periodEnd : null,
-      openingQuantity,
-    });
-    setCreating(false);
-    if (!result.success) {
-      toast.error(result.error);
-      return;
+    try {
+      const result = await createStockItem({
+        departmentId,
+        name,
+        category,
+        unit,
+        trackingPeriod,
+        periodStart: trackingPeriod === "CUSTOM" ? periodStart : null,
+        periodEnd: trackingPeriod === "CUSTOM" ? periodEnd : null,
+        openingQuantity,
+      });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${name} added to department stock`);
+      setName("");
+      setCategory("");
+      setOpeningQuantity("");
+      setPeriodStart("");
+      setPeriodEnd("");
+      router.refresh();
+    } catch (error) {
+      toast.error(error.message || "Unable to add stock item");
+    } finally {
+      setCreating(false);
     }
-    toast.success(`${name} added to department stock`);
-    setName("");
-    setCategory("");
-    setOpeningQuantity("");
-    setPeriodStart("");
-    setPeriodEnd("");
-    window.location.reload();
   };
 
   const submitMovement = async (event) => {
     event.preventDefault();
-    const result = await recordStockMovement({ departmentId, stockItemId: movingItem.id, type: movementType, quantity, unitCost });
-    if (!result.success) {
-      toast.error(result.error);
-      return;
+    try {
+      const result = await recordStockMovement({ departmentId, stockItemId: movingItem.id, type: movementType, quantity, unitCost });
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`${movingItem.name} stock updated`);
+      setMovingItem(null);
+      setQuantity("");
+      setUnitCost("");
+      router.refresh();
+    } catch (error) {
+      toast.error(error.message || "Unable to update stock");
     }
-    toast.success(`${movingItem.name} stock updated`);
-    setMovingItem(null);
-    setQuantity("");
-    setUnitCost("");
-    window.location.reload();
   };
 
   return (
