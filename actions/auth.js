@@ -257,7 +257,53 @@ export async function getSessionUser() {
     organizationId: user.organizationId,
     organizationName: user.organization?.name,
     currency: user.organization?.currency || "FCFA",
-    departmentId: user.departmentId,
+    departmentId: user.activeDepartmentId || user.departmentId,
     departmentName: user.department?.name,
+    activeDepartmentId: user.activeDepartmentId || user.departmentId,
+    memberships: user.memberships?.map((m) => ({
+      id: m.id,
+      departmentId: m.departmentId,
+      departmentName: m.department?.name,
+      domain: m.department?.domain,
+      isPrimary: m.isPrimary,
+    })),
   };
 }
+
+export async function switchActiveDepartment(departmentId) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return { success: false, error: "Unauthorized" };
+
+    if (departmentId && departmentId !== "all") {
+      const isMember =
+        user.role === "ADMIN" ||
+        user.departmentId === departmentId ||
+        user.memberships?.some((m) => m.departmentId === departmentId);
+
+      if (!isMember) {
+        return { success: false, error: "You are not assigned to this department" };
+      }
+    }
+
+    const cookieStore = await cookies();
+    if (departmentId) {
+      cookieStore.set("sf_active_dept", departmentId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60,
+      });
+    } else {
+      cookieStore.delete("sf_active_dept");
+    }
+
+    revalidatePath("/", "layout");
+    return { success: true };
+  } catch (error) {
+    console.error("Switch active department error:", error);
+    return { success: false, error: error.message };
+  }
+}
+

@@ -1,10 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { createDepartment, updateDepartment, getOrganizationOverview } from "@/actions/organization";
+import {
+  createDepartment,
+  updateDepartment,
+  getOrganizationOverview,
+} from "@/actions/organization";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -17,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Layers, Plus, Users, FileText, Loader2, Pencil } from "lucide-react";
+import { ALL_DOMAINS, getDomainConfig } from "@/lib/domain-capabilities";
 
 export function DepartmentsClient({ initialData }) {
   const [orgData, setOrgData] = useState(initialData);
@@ -25,6 +36,7 @@ export function DepartmentsClient({ initialData }) {
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [domain, setDomain] = useState("RESTAURANT");
   const [editingDept, setEditingDept] = useState(null);
 
   const refreshOverview = async () => {
@@ -42,12 +54,13 @@ export function DepartmentsClient({ initialData }) {
 
     setSubmitting(true);
     try {
-      const res = await createDepartment({ name, description });
+      const res = await createDepartment({ name, description, domain });
       if (res.success) {
         toast.success(`Department "${name}" created successfully!`);
         setCreateDialogOpen(false);
         setName("");
         setDescription("");
+        setDomain("RESTAURANT");
         await refreshOverview();
       } else {
         toast.error(res.error || "Failed to create department");
@@ -63,6 +76,7 @@ export function DepartmentsClient({ initialData }) {
     setEditingDept(dept);
     setName(dept.name);
     setDescription(dept.description || "");
+    setDomain(dept.domain || "RESTAURANT");
     setEditDialogOpen(true);
   };
 
@@ -79,6 +93,7 @@ export function DepartmentsClient({ initialData }) {
         departmentId: editingDept.id,
         name,
         description,
+        domain,
       });
       if (res.success) {
         toast.success(`Department "${name}" updated successfully!`);
@@ -105,7 +120,7 @@ export function DepartmentsClient({ initialData }) {
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Operational Sectors & Departments</h1>
           <p className="text-muted-foreground text-sm">
-            Manage your organization&apos;s business units (e.g. Bistro Restaurant, Snack Bar, Catering)
+            Manage your organization&apos;s business units (e.g. Main Restaurant, Central Kitchen, Dining Area)
           </p>
         </div>
 
@@ -119,7 +134,7 @@ export function DepartmentsClient({ initialData }) {
             <DialogHeader>
               <DialogTitle>Add Department</DialogTitle>
               <DialogDescription>
-                Create a distinct operational sector for accounting and staff assignments.
+                Create a distinct operational sector with its dedicated business domain.
               </DialogDescription>
             </DialogHeader>
 
@@ -127,11 +142,29 @@ export function DepartmentsClient({ initialData }) {
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold">Department Name *</label>
                 <Input
-                  placeholder="e.g. Bistro Snack Bar"
+                  placeholder="e.g. Main Restaurant"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold">Business Domain *</label>
+                <select
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                >
+                  {ALL_DOMAINS.map((d) => (
+                    <option key={d.key} value={d.key}>
+                      {d.label} {d.isActive ? "(Supported)" : "(Coming Soon)"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  The domain determines stock models, menu features, and financial reports.
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -164,46 +197,49 @@ export function DepartmentsClient({ initialData }) {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {departments.map((dept) => (
-            <Card key={dept.id} className="shadow-sm border-slate-200">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <Layers className="h-5 w-5" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                      Active Sector
-                    </Badge>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(dept)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <CardTitle className="text-lg font-bold mt-2">{dept.name}</CardTitle>
-                {dept.description && (
-                  <CardDescription className="text-xs">{dept.description}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent className="pt-2 border-t">
-                <div className="grid grid-cols-2 gap-4 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-slate-400" />
-                    <div>
-                      <span className="font-bold text-slate-800">{dept._count?.users || 0}</span> Staff Assigned
+          {departments.map((dept) => {
+            const config = getDomainConfig(dept.domain);
+            return (
+              <Card key={dept.id} className="shadow-sm border-slate-200">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                      <Layers className="h-5 w-5" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${config.badgeColor}`}>
+                        {config.label}
+                      </span>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditDialog(dept)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
+                  <CardTitle className="text-lg font-bold mt-2">{dept.name}</CardTitle>
+                  {dept.description && (
+                    <CardDescription className="text-xs">{dept.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent className="pt-2 border-t">
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-slate-400" />
+                      <div>
+                        <span className="font-bold text-slate-800">{dept._count?.users || 0}</span> Staff Assigned
+                      </div>
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-slate-400" />
-                    <div>
-                      <span className="font-bold text-slate-800">{dept._count?.transactions || 0}</span> Entries
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-slate-400" />
+                      <div>
+                        <span className="font-bold text-slate-800">{dept._count?.transactions || 0}</span> Entries
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -211,13 +247,28 @@ export function DepartmentsClient({ initialData }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Department</DialogTitle>
-            <DialogDescription>Update the name or description of this operational sector.</DialogDescription>
+            <DialogDescription>Update the name, business domain, or description of this operational sector.</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleUpdateDepartment} className="space-y-4 py-2">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold">Department Name *</label>
               <Input required value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold">Business Domain *</label>
+              <select
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+                className="w-full h-10 px-3 rounded-md border border-slate-200 bg-white text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              >
+                {ALL_DOMAINS.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {d.label} {d.isActive ? "(Supported)" : "(Coming Soon)"}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-1.5">

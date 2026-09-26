@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth";
 import { Button } from "./ui/button";
 import { AppSidebar } from "./app-sidebar";
+import { DepartmentSwitcher } from "./department-switcher";
+import { db } from "@/lib/prisma";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,10 +20,36 @@ import {
   Building2,
   Users,
   Layers,
+  FileCheck,
 } from "lucide-react";
 
 export default async function Header() {
   const user = await getCurrentUser();
+
+  let departments = [];
+  if (user?.organizationId) {
+    if (user.role === "ADMIN") {
+      departments = await db.department.findMany({
+        where: { organizationId: user.organizationId, isActive: true },
+        orderBy: { name: "asc" },
+      });
+    } else {
+      const deptIds = [
+        ...(user.departmentId ? [user.departmentId] : []),
+        ...(user.memberships?.map((m) => m.departmentId) || []),
+      ];
+      if (deptIds.length > 0) {
+        departments = await db.department.findMany({
+          where: {
+            id: { in: Array.from(new Set(deptIds)) },
+            organizationId: user.organizationId,
+            isActive: true,
+          },
+          orderBy: { name: "asc" },
+        });
+      }
+    }
+  }
 
   const handleLogout = async () => {
     "use server";
@@ -31,7 +59,7 @@ export default async function Header() {
   return (
     <header className="fixed top-0 z-50 w-full border-b border-slate-200 bg-white/95 backdrop-blur-md">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        {/* Brand / Logo + Organization Title */}
+        {/* Brand / Logo + Organization Title + Department Switcher */}
         <div className="flex items-center space-x-3">
           {user && <AppSidebar user={user} />}
           <Link href={user ? "/dashboard" : "/"} className="flex items-center space-x-2">
@@ -45,14 +73,12 @@ export default async function Header() {
           </Link>
 
           {user?.organization && (
-            <div className="hidden sm:flex items-center space-x-1.5 pl-3 border-l border-slate-300">
+            <div className="hidden sm:flex items-center space-x-2 pl-3 border-l border-slate-300">
               <Building2 className="h-4 w-4 text-blue-600" />
-              <span className="font-semibold text-slate-900 text-sm">{user.organization.name}</span>
-              {user.department && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 font-medium">
-                  {user.department.name}
-                </span>
-              )}
+              <span className="font-semibold text-slate-900 text-sm hidden md:inline">
+                {user.organization.name}
+              </span>
+              <DepartmentSwitcher user={user} departments={departments} />
             </div>
           )}
         </div>
@@ -98,6 +124,12 @@ export default async function Header() {
 
                   {user.role === "ADMIN" && (
                     <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/reports/inbox" className="flex items-center cursor-pointer">
+                          <FileCheck className="h-4 w-4 mr-2 text-emerald-600" />
+                          <span>Report Review Inbox</span>
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem asChild>
                         <Link href="/organization/employees" className="flex items-center cursor-pointer">
                           <Users className="h-4 w-4 mr-2 text-indigo-500" />

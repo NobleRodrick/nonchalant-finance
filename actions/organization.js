@@ -50,15 +50,19 @@ export async function createOrganization(data) {
 
       // 3. Create initial departments
       const createdDepartments = {};
-      for (const deptName of departments) {
-        if (deptName && deptName.trim()) {
+      for (const item of departments) {
+        const deptName = typeof item === "string" ? item.trim() : item?.name?.trim();
+        const deptDomain = (typeof item === "object" && item?.domain) || "RESTAURANT";
+        if (deptName) {
           const dept = await tx.department.create({
             data: {
               organizationId: org.id,
-              name: deptName.trim(),
+              name: deptName,
+              domain: deptDomain,
+              isActive: true,
             },
           });
-          createdDepartments[deptName.trim().toLowerCase()] = dept.id;
+          createdDepartments[deptName.toLowerCase()] = dept.id;
         }
       }
 
@@ -79,7 +83,7 @@ export async function createOrganization(data) {
               assignedDeptId = emp.departmentId;
             }
 
-            await tx.user.create({
+            const newUser = await tx.user.create({
               data: {
                 name: emp.name.trim(),
                 email: emp.email.toLowerCase().trim(),
@@ -91,6 +95,17 @@ export async function createOrganization(data) {
                 isActive: true,
               },
             });
+
+            if (assignedDeptId) {
+              await tx.userDepartment.create({
+                data: {
+                  userId: newUser.id,
+                  departmentId: assignedDeptId,
+                  isPrimary: true,
+                  isActive: true,
+                },
+              });
+            }
           }
         }
       }
@@ -149,7 +164,7 @@ export async function createDepartment(data) {
     if (!user || user.role !== "ADMIN") return { success: false, error: "Only admins can add departments" };
     if (!user.organizationId) return { success: false, error: "No organization found" };
 
-    const { name, description } = data;
+    const { name, description, domain = "RESTAURANT" } = data;
     if (!name || !name.trim()) return { success: false, error: "Department name is required" };
 
     const department = await db.department.create({
@@ -157,6 +172,8 @@ export async function createDepartment(data) {
         organizationId: user.organizationId,
         name: name.trim(),
         description: description?.trim() || null,
+        domain: domain || "RESTAURANT",
+        isActive: true,
       },
     });
 
@@ -192,20 +209,35 @@ export async function createEmployee(data) {
 
     const passwordHash = await hashPassword(tempPassword);
 
-    const employee = await db.user.create({
-      data: {
-        name: name.trim(),
-        email: email.toLowerCase().trim(),
-        phone: phone || null,
-        passwordHash,
-        role,
-        organizationId: user.organizationId,
-        departmentId: departmentId || null,
-        isActive: true,
-      },
-      include: {
-        department: true,
-      },
+    const employee = await db.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          name: name.trim(),
+          email: email.toLowerCase().trim(),
+          phone: phone || null,
+          passwordHash,
+          role,
+          organizationId: user.organizationId,
+          departmentId: departmentId || null,
+          isActive: true,
+        },
+        include: {
+          department: true,
+        },
+      });
+
+      if (departmentId) {
+        await tx.userDepartment.create({
+          data: {
+            userId: created.id,
+            departmentId,
+            isPrimary: true,
+            isActive: true,
+          },
+        });
+      }
+
+      return created;
     });
 
     revalidatePath("/organization/employees");
@@ -259,16 +291,20 @@ export async function updateDepartment(data) {
     if (!user || user.role !== "ADMIN") return { success: false, error: "Only admins can update departments" };
     if (!user.organizationId) return { success: false, error: "No organization found" };
 
-    const { departmentId, name, description } = data;
+    const { departmentId, name, description, domain, isActive } = data;
     if (!departmentId) return { success: false, error: "Department ID is required" };
     if (!name || !name.trim()) return { success: false, error: "Department name is required" };
 
+    const updateData = {
+      name: name.trim(),
+      description: description?.trim() || null,
+    };
+    if (domain) updateData.domain = domain;
+    if (isActive !== undefined) updateData.isActive = isActive;
+
     const department = await db.department.update({
       where: { id: departmentId, organizationId: user.organizationId },
-      data: {
-        name: name.trim(),
-        description: description?.trim() || null,
-      },
+      data: updateData,
     });
 
     revalidatePath("/organization/departments");
@@ -293,13 +329,96 @@ export async function getDepartments() {
       });
     }
 
-    if (!user.departmentId) return [];
+    const deptIds = [
+      ...(user.departmentId ? [user.departmentId] : []),
+      ...(user.memberships?.map((m) => m.departmentId) || []),
+    ];
+
+    if (deptIds.length === 0) return [];
 
     return await db.department.findMany({
-      where: { id: user.departmentId, organizationId: user.organizationId },
+      where: { id: { in: Array.from(new Set(deptIds)) }, organizationId: user.organizationId },
+      orderBy: { name: "asc" },
     });
   } catch (error) {
     console.error("Get departments error:", error);
     return [];
   }
 }
+
+export async function assignUserDepartment(data) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "ADMIN") {
+      return { success: false, error: "Only admins can assign employees to departments" };
+    }
+
+    const { userId, departmentId, isPrimary = false } = data;
+    if (!userId || !departmentId) {
+      return { success: false, error: "User ID and Department ID are required" };
+    }
+
+    const membership = await db.userDepartment.upsert({
+      where: {
+        userId_departmentId: { userId, departmentId },
+      },
+      update: {
+        isActive: true,
+        isPrimary,
+      },
+      create: {
+        userId,
+        departmentId,
+        isPrimary,
+        isActive: true,
+      },
+      include: {
+        department: true,
+      },
+    });
+
+    if (isPrimary) {
+      await db.user.update({
+        where: { id: userId },
+        data: { departmentId },
+      });
+    }
+
+    revalidatePath("/organization/employees");
+    return { success: true, data: membership };
+  } catch (error) {
+    console.error("Assign user department error:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function removeUserDepartment(data) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== "ADMIN") {
+      return { success: false, error: "Only admins can remove department assignments" };
+    }
+
+    const { userId, departmentId } = data;
+    await db.userDepartment.deleteMany({
+      where: { userId, departmentId },
+    });
+
+    const nextMembership = await db.userDepartment.findFirst({
+      where: { userId, isActive: true },
+      orderBy: { isPrimary: "desc" },
+    });
+
+    await db.user.update({
+      where: { id: userId },
+      data: { departmentId: nextMembership?.departmentId || null },
+    });
+
+    revalidatePath("/organization/employees");
+    return { success: true };
+  } catch (error) {
+    console.error("Remove user department error:", error);
+    return { success: false, error: error.message };
+  }
+}
+

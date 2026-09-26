@@ -22,11 +22,11 @@ import {
 } from "lucide-react";
 
 const SUGGESTED_DEPTS = [
-  "Bistro Restaurant",
-  "Bistro Snack Bar",
-  "Kitchen & Catering",
-  "VIP Lounge",
-  "Store & Warehouse",
+  "Main Restaurant",
+  "Central Kitchen",
+  "Express Dining",
+  "VIP Dining Room",
+  "Food & Beverage",
 ];
 
 const emptyEmployee = (departmentName = "") => ({
@@ -171,7 +171,7 @@ export function OnboardingWizard() {
               <label className="text-sm font-semibold">Business / Organization Name</label>
               <Input
                 type="text"
-                placeholder="e.g. Chris Complex"
+                placeholder="e.g. Sunrise Holdings"
                 value={orgName}
                 onChange={(e) => setOrgName(e.target.value)}
                 className="h-11 text-base font-medium"

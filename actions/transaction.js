@@ -27,13 +27,13 @@ export async function createTransaction(data) {
 
     // Enforce employee department scoping
     let targetDepartmentId = data.departmentId;
-    if (user.role !== "ADMIN" && user.departmentId) {
-      targetDepartmentId = user.departmentId;
+    if (user.role !== "ADMIN" && (user.activeDepartmentId || user.departmentId)) {
+      targetDepartmentId = user.activeDepartmentId || user.departmentId;
     }
 
     if (!targetDepartmentId) {
       const defaultDept = await db.department.findFirst({
-        where: { organizationId: user.organizationId },
+        where: { organizationId: user.organizationId, isActive: true },
       });
       targetDepartmentId = defaultDept?.id || null;
     }
@@ -146,11 +146,47 @@ export async function createTransaction(data) {
         }
       }
 
+      // If credit sale, ensure a Debt record is created
+      if (type === "SALE" && paymentMethod === "CREDIT" && data.customerName) {
+        await tx.debt.create({
+          data: {
+            debtorName: data.customerName.trim(),
+            amountOwed: effectiveAmount,
+            amountPaid: 0,
+            status: "UNPAID",
+            foodDescription: data.description || "Credit sale",
+            date: data.date ? new Date(data.date) : new Date(),
+            transactionId: newTransaction.id,
+            organizationId: user.organizationId,
+            departmentId: targetDepartmentId,
+            userId: user.id,
+          },
+        });
+      }
+
+      // Record Audit Event
+      await tx.auditEvent.create({
+        data: {
+          organizationId: user.organizationId,
+          departmentId: targetDepartmentId,
+          userId: user.id,
+          action: "TRANSACTION_CREATED",
+          entityType: "Transaction",
+          entityId: newTransaction.id,
+          afterJson: {
+            type,
+            amount: effectiveAmount,
+            paymentMethod,
+          },
+        },
+      });
+
       return newTransaction;
     });
 
     revalidatePath("/dashboard");
     revalidatePath("/reports");
+    revalidatePath("/debts");
 
     return { success: true, data: serializeAmount(transaction) };
   } catch (error) {

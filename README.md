@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Springer Finance: Multi-Tenant Commercial Operations & Financial Platform
 
-## Getting Started
+**Primary Domain:** RESTAURANT  
+**Currency:** Central African CFA Franc (FCFA)  
+**Architecture:** Next.js 16 (App Router), React 19, Prisma ORM 6 with PostgreSQL, Server Actions, Tailwind CSS v4.
 
-First, run the development server:
+---
+
+## 1. Executive Summary
+
+Springer Finance is a domain-aware commercial operations and financial management platform designed for organizations with multiple operational business units (departments). Each department operates with its own staff, inventory ledger, catalog, daily cash drawer, and workflow rules.
+
+The first production-ready domain is **RESTAURANT**, supporting:
+- Food menu dishes with direct plate stock and ingredient recipe deduction.
+- Real-time stock availability preventing overselling.
+- Multi-line itemized sales, customer debt/receivables tracking, and partial debt collections.
+- Inward purchases with supplier details, line items, and weighted-average valuation.
+- Cash handovers to the CEO with drawer balance validation.
+- Daily financial closings, immutable report snapshots, and Boss Review Inbox with approve/return workflow.
+- Multi-department staff memberships and real-time active department switching.
+
+Future domain support includes Bar & Lounge, Pressing & Dry Cleaning, Car Wash, Room Rental, and Retail Shop.
+
+---
+
+## 2. Core Concepts & Calculation Contracts
+
+- **Sales:** Gross Sales - Discounts = Net Sales. Discounts adjust revenue and are not recorded as operating expenses.
+- **Credit Sales & Debts:** Credit sales generate outstanding debts; cash enters drawer balances only when debt payments are received.
+- **Purchases & Valuation:** Purchases increase physical stock and recalculate weighted-average cost:
+  `New Unit Cost = (Current Qty × Current Cost + Purchased Qty × Purchase Cost) / (Current Qty + Purchased Qty)`
+- **Stock Closing:** `Closing Qty = Opening Qty + Purchased Qty - Sold/Used Qty - Damaged Qty`.
+- **Expected Cash:** `Cash Sales + Rent Income + Other Income + Debt Payments Received - Cash Purchases - Cash Opex`.
+- **Cash Remaining:** `Expected Cash - CEO Cash Handovers`.
+
+---
+
+## 3. Getting Started
+
+### Prerequisites
+- Node.js 18+ (Node 20+ recommended)
+- PostgreSQL database (Supabase pooler configured in `.env`)
+
+### Installation & Setup
 
 ```bash
+# Install dependencies
+npm install
+
+# Verify database connection and schema
+npx prisma validate
+npm run verify
+
+# Start development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 4. Verification & Testing
 
-## Learn More
+```bash
+# Run multi-tenant platform and authentication verification
+npm run verify
 
-To learn more about Next.js, take a look at the following resources:
+# Run restaurant domain integration tests
+node scripts/verify-restaurant.mjs
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Run production build verification
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 5. Security & Multi-Tenancy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Authentication:** JWT access tokens and long-lived refresh tokens stored securely in HTTP-only cookies.
+- **Authorization:** `ADMIN` (Boss/Owner), `MANAGER` (Department/Operations Manager), `ACCOUNTANT` (Finance Officer), `STAFF` (Cashier/Shift Operator).
+- **Isolation:** Every transaction, stock item, menu dish, sale line, purchase line, and debt is organization- and department-scoped.

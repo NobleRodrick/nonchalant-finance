@@ -25,6 +25,7 @@ const serializeStockItem = (item) => {
     ...item,
     openingQuantity: Number(item.openingQuantity || 0),
     currentQuantity: Number(item.currentQuantity || 0),
+    valuationUnitCost: Number(item.valuationUnitCost || 0),
     reorderLevel: Number(item.reorderLevel || 0),
     movements: item.movements?.map((movement) => ({
       ...movement,

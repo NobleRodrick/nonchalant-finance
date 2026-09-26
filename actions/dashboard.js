@@ -30,13 +30,13 @@ export async function getDashboardData(selectedDepartmentId = null) {
   if (!user) throw new Error("Unauthorized");
   if (!user.organizationId) throw new Error("User has no associated organization");
 
-  if (user.role !== "ADMIN" && !user.departmentId) {
+  if (user.role !== "ADMIN" && !user.departmentId && (!user.memberships || user.memberships.length === 0)) {
     throw new Error("Your account is not assigned to a department. Contact your manager.");
   }
 
-  let effectiveDeptId = selectedDepartmentId;
-  if (user.role !== "ADMIN" && user.departmentId) {
-    effectiveDeptId = user.departmentId;
+  let effectiveDeptId = selectedDepartmentId || user.activeDepartmentId || user.departmentId;
+  if (user.role !== "ADMIN") {
+    effectiveDeptId = user.activeDepartmentId || user.departmentId || user.memberships?.[0]?.departmentId;
   }
 
   const whereClause = {
@@ -74,16 +74,14 @@ export async function getUserAccounts() {
   const user = await getCurrentUser();
   if (!user) throw new Error("Unauthorized");
 
-  if (user.role !== "ADMIN" && !user.departmentId) {
-    return [];
-  }
+  const deptId = user.activeDepartmentId || user.departmentId;
 
   try {
     const accounts = await db.account.findMany({
       where: {
         organizationId: user.organizationId,
-        ...(user.role !== "ADMIN" && user.departmentId
-          ? { departmentId: user.departmentId }
+        ...(user.role !== "ADMIN" && deptId
+          ? { OR: [{ departmentId: deptId }, { departmentId: null }] }
           : {}),
       },
       orderBy: { createdAt: "desc" },
