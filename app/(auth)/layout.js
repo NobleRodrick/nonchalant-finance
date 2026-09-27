@@ -1,11 +1,10 @@
-import React from 'react'
+import { PublicHeader } from "@/components/public-header";
 
-const AuthLayout = ({children}) => {
+export default function AuthLayout({ children }) {
   return (
-    <div className='flex justify-center pt-40'>
-      {children}
+    <div className="min-h-screen">
+      <PublicHeader />
+      <div className="flex justify-center px-4 pb-16 pt-16">{children}</div>
     </div>
-  )
+  );
 }
-
-export default AuthLayout

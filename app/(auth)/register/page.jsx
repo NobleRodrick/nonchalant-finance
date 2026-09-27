@@ -24,8 +24,8 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (formData.password.length < 6) {
-      toast.error("Password must be at least 6 characters long");
+    if (formData.password.length < 8 || !/[A-Za-z]/.test(formData.password) || !/\d/.test(formData.password)) {
+      toast.error("Password must be at least 8 characters and contain letters and numbers");
       return;
     }
 
@@ -51,23 +51,24 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center min-h-[calc(100vh-12rem)] px-4">
       <Card className="w-full max-w-md shadow-lg border-slate-200">
         <CardHeader className="space-y-1 text-center">
-          <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+          <div className="w-12 h-12 bg-emerald-100 text-slate-900 rounded-xl flex items-center justify-center mx-auto mb-2">
             <ShieldCheck className="h-6 w-6" />
           </div>
-          <CardTitle className="text-2xl font-bold tracking-tight">Create Business Admin Account</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">Create the owner (Boss) account</CardTitle>
           <CardDescription>
-            Register as an Administrator to manage your business, sectors, and delegate employees
+            You will then set up your company, its departments and your people.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Your Full Name</label>
+              <label htmlFor="register-name" className="text-sm font-medium">Full name</label>
               <div className="relative">
                 <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="register-name"
                   type="text"
-                  placeholder="e.g. John Doe"
+                  placeholder="Your full name"
                   className="pl-9"
                   required
                   value={formData.name}
@@ -77,12 +78,13 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Email Address</label>
+              <label htmlFor="register-email" className="text-sm font-medium">E-mail</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="register-email"
                   type="email"
-                  placeholder="boss@company.com"
+                  placeholder="name@example.com"
                   className="pl-9"
                   required
                   value={formData.email}
@@ -92,10 +94,11 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Phone Number (Optional)</label>
+              <label htmlFor="register-phone" className="text-sm font-medium">Phone (optional)</label>
               <div className="relative">
                 <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="register-phone"
                   type="tel"
                   placeholder="+237 6XX XXX XXX"
                   className="pl-9"
@@ -106,12 +109,13 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Master Password</label>
+              <label htmlFor="register-password" className="text-sm font-medium">Password</label>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
+                  id="register-password"
                   type="password"
-                  placeholder="Minimum 6 characters"
+                  placeholder="At least 8 characters, letters and numbers"
                   className="pl-9"
                   required
                   value={formData.password}
@@ -120,15 +124,15 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-11 bg-blue-600 hover:bg-blue-700" disabled={loading}>
+            <Button type="submit" className="w-full h-11" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating Account...
+                  Creating the account…
                 </>
               ) : (
                 <>
-                  Continue to Setup Organization
+                  Create account and continue
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </>
               )}
@@ -137,7 +141,7 @@ export default function RegisterPage() {
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="font-semibold text-blue-600 hover:underline">
+            <Link href="/login" className="font-semibold text-slate-900 hover:underline">
               Sign In
             </Link>
           </div>

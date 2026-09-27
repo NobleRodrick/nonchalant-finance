@@ -1,0 +1,625 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Organization {
+  id                String                @id @default(uuid())
+  name              String
+  slug              String                @unique
+  currency          String                @default("FCFA")
+  departments       Department[]
+  users             User[]
+  accounts          Account[]
+  transactions      Transaction[]
+  dailyStockRecords DailyStockRecord[]
+  stockItems        DepartmentStockItem[]
+  stockMovements    StockMovement[]
+  menuItems         MenuItem[]
+  saleLines         SaleLine[]
+  debts             Debt[]
+  debtPayments      DebtPayment[]
+  cashHandovers     CashHandover[]
+  recipeIngredients RecipeIngredient[]
+  dailyReports      DailyReport[]
+  purchases         Purchase[]
+  auditEvents       AuditEvent[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@map("organizations")
+}
+
+model Department {
+  id                String                @id @default(uuid())
+  organizationId    String
+  organization      Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  domain            DepartmentDomain      @default(RESTAURANT)
+  isActive          Boolean               @default(true)
+  users             User[]
+  memberships       UserDepartment[]
+  accounts          Account[]
+  transactions      Transaction[]
+  dailyStockRecords DailyStockRecord[]
+  stockItems        DepartmentStockItem[]
+  stockMovements    StockMovement[]
+  menuItems         MenuItem[]
+  saleLines         SaleLine[]
+  debts             Debt[]
+  debtPayments      DebtPayment[]
+  cashHandovers     CashHandover[]
+  recipeIngredients RecipeIngredient[]
+  dailyReports      DailyReport[]
+  purchases         Purchase[]
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([organizationId])
+  @@map("departments")
+}
+
+model User {
+  id                String                @id @default(uuid())
+  organizationId    String?
+  organization      Organization?         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId      String?               // Primary/default department
+  department        Department?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  email             String                @unique
+  passwordHash      String                @default("")
+  name              String
+  phone             String?
+  imageUrl          String?
+  role              UserRole              @default(STAFF)
+  isActive          Boolean               @default(true)
+  memberships       UserDepartment[]
+  transactions      Transaction[]
+  accounts          Account[]
+  budgets           Budget[]
+  refreshTokens     RefreshToken[]
+  dailyStockRecords DailyStockRecord[]
+  stockItems        DepartmentStockItem[]
+  stockMovements    StockMovement[]
+  menuItems         MenuItem[]
+  saleLines         SaleLine[]
+  debts             Debt[]
+  debtPayments      DebtPayment[]
+  cashHandovers     CashHandover[]
+  recipeIngredients RecipeIngredient[]
+  purchases         Purchase[]
+  submittedReports  DailyReport[]         @relation("ReportSubmittedBy")
+  reviewedReports   DailyReport[]         @relation("ReportReviewedBy")
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@map("users")
+}
+
+model UserDepartment {
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  isPrimary    Boolean     @default(false)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([userId, departmentId])
+  @@index([userId])
+  @@index([departmentId])
+  @@map("user_departments")
+}
+
+enum UserRole {
+  ADMIN       // Boss: Full organizational authority, can manage all depts & staff
+  MANAGER     // Department or General Manager
+  ACCOUNTANT  // Finance officer: records & generates daily/weekly reports
+  STAFF       // Shift operator / cashier
+}
+
+enum DepartmentDomain {
+  RESTAURANT
+  BAR
+  PRESSING
+  CAR_WASH
+  ROOM_RENTAL
+  MATERIAL_RENTAL
+  SHOP
+  OTHER
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Account {
+  id             String        @id @default(uuid())
+  name           String
+  type           AccountType
+  balance        Decimal       @default(0)
+  isDefault      Boolean       @default(false)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  department     Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  cashHandovers  CashHandover[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@map("accounts")
+}
+
+model Transaction {
+  id                String            @id @default(uuid())
+  type              TransactionType
+  amount            Decimal
+  grossAmount       Decimal?
+  discountAmount    Decimal?          @default(0)
+  netAmount         Decimal?
+  paymentMethod     PaymentMethod     @default(CASH)
+  customerName      String?
+  isDebtPaid        Boolean           @default(false)
+  operationCategory OperationCategory?
+  description       String?
+  date              DateTime          @default(now())
+  category          String
+  receiptUrl        String?
+  isRecurring       Boolean           @default(false)
+  recurringInterval RecurringInterval?
+  nextRecurringDate DateTime?
+  lastProcessed     DateTime?
+  status            TransactionStatus @default(COMPLETED)
+  organizationId    String?
+  organization      Organization?     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId      String?
+  department        Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId         String?
+  account           Account?          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  stockMovements    StockMovement[]
+  saleLines         SaleLine[]
+  debt              Debt?
+  cashHandovers     CashHandover[]
+  purchaseSupplier  String?
+  purchaseReference String?
+  purchase          Purchase?
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([userId])
+  @@index([accountId])
+  @@index([date])
+  @@map("transactions")
+}
+
+model DailyStockRecord {
+  id             String        @id @default(uuid())
+  date           DateTime      @default(now())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openingStock   Decimal       @default(0)
+  newPurchases   Decimal       @default(0)
+  stockUsed      Decimal       @default(0)
+  damagedStock   Decimal       @default(0)
+  closingStock   Decimal       @default(0)
+  notes          String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([userId])
+  @@index([date])
+  @@map("daily_stock_records")
+}
+
+model DepartmentStockItem {
+  id                String              @id @default(uuid())
+  name              String
+  category          String?
+  unit              String              @default("unit")
+  trackingPeriod    StockTrackingPeriod @default(DAILY)
+  openingQuantity   Decimal             @default(0)
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  currentQuantity   Decimal             @default(0)
+  valuationUnitCost Decimal             @default(0)
+  reorderLevel      Decimal             @default(0)
+  isActive          Boolean             @default(true)
+  organizationId    String
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId      String
+  department        Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movements         StockMovement[]
+  recipeIngredients RecipeIngredient[]
+  purchaseLines     PurchaseLine[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@unique([departmentId, name])
+  @@index([organizationId])
+  @@index([departmentId])
+  @@map("department_stock_items")
+}
+
+model StockMovement {
+  id             String            @id @default(uuid())
+  type           StockMovementType
+  quantity       Decimal
+  unitCost       Decimal?
+  date           DateTime          @default(now())
+  notes          String?
+  stockItemId    String
+  stockItem      DepartmentStockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  transactionId  String?
+  transaction    Transaction?      @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+
+  @@index([stockItemId, date])
+  @@index([departmentId, date])
+  @@map("stock_movements")
+}
+
+enum DishInventoryMode {
+  DIRECT_PLATE
+  RECIPE
+}
+
+model MenuItem {
+  id             String             @id @default(uuid())
+  name           String
+  description    String?
+  sellingPrice   Decimal
+  costPrice      Decimal            @default(0)
+  inventoryMode  DishInventoryMode  @default(DIRECT_PLATE)
+  openingQuantity Decimal           @default(0)
+  currentQuantity Decimal           @default(0)
+  isActive       Boolean            @default(true)
+  organizationId String
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe         RecipeIngredient[]
+  saleLines      SaleLine[]
+  purchaseLines  PurchaseLine[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([departmentId, name])
+  @@index([organizationId, departmentId])
+  @@map("menu_items")
+}
+
+model RecipeIngredient {
+  id             String              @id @default(uuid())
+  quantity       Decimal
+  menuItemId     String
+  menuItem       MenuItem            @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  stockItemId    String
+  stockItem      DepartmentStockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, stockItemId])
+  @@index([departmentId])
+  @@map("recipe_ingredients")
+}
+
+model SaleLine {
+  id             String       @id @default(uuid())
+  quantity       Decimal
+  unitPrice      Decimal
+  totalAmount    Decimal
+  discountAmount Decimal      @default(0)
+  transactionId  String
+  transaction    Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  menuItemId     String
+  menuItem       MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([transactionId])
+  @@index([menuItemId, createdAt])
+  @@map("sale_lines")
+}
+
+model Purchase {
+  id                String            @id @default(uuid())
+  organizationId    String
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId      String
+  department        Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplierName      String?
+  reference         String?
+  paymentMethod     PaymentMethod     @default(CASH)
+  totalAmount       Decimal
+  date              DateTime          @default(now())
+  receiptUrl        String?
+  notes             String?
+  transactionId     String?           @unique
+  transaction       Transaction?      @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  lines             PurchaseLine[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([organizationId, departmentId, date])
+  @@map("purchases")
+}
+
+model PurchaseLine {
+  id            String               @id @default(uuid())
+  purchaseId    String
+  purchase      Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  stockItemId   String?
+  stockItem     DepartmentStockItem? @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
+  menuItemId    String?
+  menuItem      MenuItem?            @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  quantity      Decimal
+  unitCost      Decimal
+  totalCost     Decimal
+  createdAt     DateTime             @default(now())
+
+  @@index([purchaseId])
+  @@map("purchase_lines")
+}
+
+model Debt {
+  id              String        @id @default(uuid())
+  debtorName      String
+  debtorContact   String?
+  foodDescription String?
+  amountOwed      Decimal
+  amountPaid      Decimal       @default(0)
+  status          DebtStatus    @default(UNPAID)
+  date            DateTime      @default(now())
+  transactionId   String?       @unique
+  transaction     Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId    String
+  department      Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments        DebtPayment[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([organizationId, departmentId, status])
+  @@map("debts")
+}
+
+model DebtPayment {
+  id             String        @id @default(uuid())
+  amount         Decimal
+  paymentMethod  PaymentMethod @default(CASH)
+  reference      String?
+  date           DateTime      @default(now())
+  debtId         String
+  debt           Debt          @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@index([debtId, date])
+  @@map("debt_payments")
+}
+
+model CashHandover {
+  id             String       @id @default(uuid())
+  amount         Decimal
+  recipientName  String       @default("CEO")
+  reference      String?
+  receiptUrl     String?
+  date           DateTime     @default(now())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId      String?
+  account        Account?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  transactionId  String?
+  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, departmentId, date])
+  @@map("cash_handovers")
+}
+
+enum DailyReportStatus {
+  DRAFT
+  SUBMITTED
+  REVIEWED
+  APPROVED
+  RETURNED
+}
+
+model DailyReport {
+  id             String            @id @default(uuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  reportDate     DateTime
+  status         DailyReportStatus @default(DRAFT)
+  submittedById  String?
+  submittedBy    User?             @relation("ReportSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+  reviewedById   String?
+  reviewedBy     User?             @relation("ReportReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  submittedAt    DateTime?
+  reviewedAt     DateTime?
+  snapshotJson   Json
+  totalsJson     Json
+  notes          String?
+  reviewNotes    String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([departmentId, reportDate])
+  @@index([organizationId, reportDate])
+  @@map("daily_reports")
+}
+
+model AuditEvent {
+  id             String        @id @default(uuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  userId         String?
+  action         String
+  entityType     String
+  entityId       String
+  beforeJson     Json?
+  afterJson      Json?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("audit_events")
+}
+
+model Budget {
+  id            String    @id @default(uuid())
+  amount        Decimal
+  lastAlertSent DateTime?
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("budgets")
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  SALE
+  PURCHASE
+  DISCOUNT
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT
+  MOMO
+  BANK_TRANSFER
+}
+
+enum OperationCategory {
+  PURCHASE_FOOD
+  PURCHASE_DRINK
+  PURCHASE_SUPPLIES
+  PURCHASE_STOCK
+  OPEX_UTILITIES
+  OPEX_TRANSPORT
+  OPEX_MAINTENANCE
+  OPEX_SALARIES
+  OPEX_OTHER
+  SALE_FOOD
+  SALE_DRINK
+  SALE_SERVICES
+  RENT_INCOME
+  OTHER_INCOME
+  OTHER_EXPENSE
+  DISCOUNT_PROMO
+  DISCOUNT_STAFF
+  DISCOUNT_CUSTOMER
+  CASH_HANDOVER
+  DEBT_COLLECTION
+}
+
+enum AccountType {
+  CURRENT
+  SAVINGS
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum RecurringInterval {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum StockTrackingPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum StockMovementType {
+  OPENING
+  PURCHASE
+  USAGE
+  DAMAGE
+  ADJUSTMENT
+  WASTE
+}
+
+enum DebtStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}

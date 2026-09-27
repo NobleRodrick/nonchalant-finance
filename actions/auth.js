@@ -1,309 +1,166 @@
 "use server";
 
+import { cookies, headers } from "next/headers";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/prisma";
 import {
-  hashPassword,
-  verifyPassword,
-  signAccessToken,
-  signRefreshToken,
-  setAuthCookies,
+  ACTIVE_DEPT_COOKIE,
+  REFRESH_TOKEN_COOKIE,
   clearAuthCookies,
   getCurrentUser,
+  hashPassword,
+  startSession,
+  verifyPassword,
 } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { runAction } from "@/lib/action";
+import { forbidden, invalid, unauthorized } from "@/lib/errors";
+import { rateLimit, resetRateLimit } from "@/lib/rate-limit";
+import { accessibleDepartmentIds } from "@/lib/access";
+import { validatePasswordStrength } from "@/lib/password-utils";
 
-export async function loginUser(data) {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function clientIp() {
   try {
-    const { email, password } = data;
-
-    if (!email || !password) {
-      return { success: false, error: "Email and password are required" };
-    }
-
-    const user = await db.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
-      include: {
-        organization: true,
-        department: true,
-      },
-    });
-
-    if (!user) {
-      return { success: false, error: "Invalid email or password" };
-    }
-
-    if (!user.isActive) {
-      return { success: false, error: "This account has been deactivated. Please contact your manager." };
-    }
-
-    const isMatch = await verifyPassword(password, user.passwordHash);
-    if (!isMatch) {
-      return { success: false, error: "Invalid email or password" };
-    }
-
-    // Generate Access & Refresh tokens
-    const accessToken = await signAccessToken({
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      organizationId: user.organizationId,
-      departmentId: user.departmentId,
-    });
-
-    const refreshToken = await signRefreshToken({
-      userId: user.id,
-    });
-
-    // Save refresh token in DB
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    await db.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: user.id,
-        expiresAt,
-      },
-    });
-
-    await setAuthCookies(accessToken, refreshToken);
-
-    return {
-      success: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        organizationName: user.organization?.name,
-        departmentId: user.departmentId,
-        departmentName: user.department?.name,
-      },
-      needsOnboarding: user.role === "ADMIN" && !user.organizationId,
-    };
-  } catch (error) {
-    console.error("Login error:", error);
-    return { success: false, error: error.message || "Failed to log in" };
+    const h = await headers();
+    return (h.get("x-forwarded-for") || "").split(",")[0].trim() || h.get("x-real-ip") || "local";
+  } catch {
+    return "local";
   }
 }
 
-export async function registerBoss(data) {
-  try {
-    const { name, email, password, phone } = data;
+/** Only same-site relative paths may be used as post-login redirects. */
+function safeRedirect(path) {
+  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
+    return "/home";
+  }
+  return path;
+}
 
-    if (!name || !email || !password) {
-      return { success: false, error: "Name, email, and password are required" };
+export async function loginUser(data) {
+  return runAction("loginUser", async () => {
+    const email = String(data?.email || "").toLowerCase().trim();
+    const password = String(data?.password || "");
+    if (!email || !password) throw invalid("Email and password are required.");
+
+    const ip = await clientIp();
+    const limitKey = `login:${ip}:${email}`;
+    const limit = rateLimit(limitKey, { limit: 8, windowMs: 15 * 60 * 1000 });
+    if (!limit.allowed) {
+      throw forbidden(`Too many sign-in attempts. Try again in ${Math.ceil(limit.retryAfterMs / 60000)} minute(s).`);
     }
 
-    const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
-    });
+    const user = await db.user.findUnique({ where: { email } });
+    const ok = user ? await verifyPassword(password, user.passwordHash) : false;
+    if (!user || !ok) throw unauthorized("Invalid email or password.");
+    if (!user.isActive) throw forbidden("This account has been deactivated. Please contact your manager.");
 
-    if (existingUser) {
-      return { success: false, error: "An account with this email already exists" };
-    }
-
-    const passwordHash = await hashPassword(password);
-
-    const newUser = await db.user.create({
-      data: {
-        name,
-        email: email.toLowerCase().trim(),
-        phone: phone || null,
-        passwordHash,
-        role: "ADMIN",
-        isActive: true,
-      },
-    });
-
-    // Generate tokens
-    const accessToken = await signAccessToken({
-      userId: newUser.id,
-      email: newUser.email,
-      role: newUser.role,
-      organizationId: null,
-      departmentId: null,
-    });
-
-    const refreshToken = await signRefreshToken({
-      userId: newUser.id,
-    });
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30);
-
-    await db.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId: newUser.id,
-        expiresAt,
-      },
-    });
-
-    await setAuthCookies(accessToken, refreshToken);
+    resetRateLimit(limitKey);
+    await startSession(user);
 
     return {
-      success: true,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-      },
+      user: { id: user.id, name: user.name, role: user.role },
+      needsOnboarding: user.role === "ADMIN" && !user.organizationId,
+      redirectTo: safeRedirect(data?.redirect),
     };
-  } catch (error) {
-    console.error("Boss registration error:", error);
-    return { success: false, error: error.message || "Failed to register" };
-  }
+  });
+}
+
+export async function registerBoss(data) {
+  return runAction("registerBoss", async () => {
+    const name = String(data?.name || "").trim();
+    const email = String(data?.email || "").toLowerCase().trim();
+    const password = String(data?.password || "");
+    const phone = String(data?.phone || "").trim() || null;
+
+    if (!name || !email || !password) throw invalid("Name, email, and password are required.");
+    if (!EMAIL_RE.test(email)) throw invalid("Enter a valid email address.");
+    const weak = validatePasswordStrength(password);
+    if (weak) throw invalid(weak);
+
+    const ip = await clientIp();
+    const limit = rateLimit(`register:${ip}`, { limit: 5, windowMs: 60 * 60 * 1000 });
+    if (!limit.allowed) throw forbidden("Too many registrations from this network. Try again later.");
+
+    const existing = await db.user.findUnique({ where: { email } });
+    if (existing) throw invalid("An account with this email already exists.");
+
+    const user = await db.user.create({
+      data: { name, email, phone, passwordHash: await hashPassword(password), role: "ADMIN", isActive: true },
+    });
+    await startSession(user);
+    return { user: { id: user.id, name: user.name, role: user.role } };
+  });
 }
 
 export async function logoutUser() {
   try {
     const cookieStore = await cookies();
-    const refreshToken = cookieStore.get("sf_refresh_token")?.value;
-
-    if (refreshToken) {
-      await db.refreshToken.deleteMany({
-        where: { token: refreshToken },
-      });
-    }
-
-    await clearAuthCookies();
-    return { success: true };
+    const refreshToken = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
+    if (refreshToken) await db.refreshToken.deleteMany({ where: { token: refreshToken } });
   } catch (error) {
-    console.error("Logout error:", error);
-    await clearAuthCookies();
-    return { success: true };
+    console.error(JSON.stringify({ level: "error", event: "logout_failed", message: error.message }));
   }
+  await clearAuthCookies();
+  return { success: true };
 }
 
 export async function updateProfile(data) {
-  try {
+  return runAction("updateProfile", async () => {
     const user = await getCurrentUser();
-    if (!user) return { success: false, error: "Unauthorized" };
-
-    const updatedUser = await db.user.update({
+    if (!user) throw unauthorized();
+    const name = data?.name !== undefined ? String(data.name).trim() : user.name;
+    if (!name) throw invalid("Name cannot be empty.");
+    const updated = await db.user.update({
       where: { id: user.id },
-      data: {
-        name: data.name || user.name,
-        phone: data.phone !== undefined ? data.phone : user.phone,
-      },
+      data: { name, phone: data?.phone !== undefined ? String(data.phone).trim() || null : user.phone },
+      select: { id: true, name: true, email: true, phone: true },
     });
-
-    revalidatePath("/profile");
-    revalidatePath("/dashboard");
-
-    return {
-      success: true,
-      user: {
-        id: updatedUser.id,
-        name: updatedUser.name,
-        email: updatedUser.email,
-        phone: updatedUser.phone,
-      },
-    };
-  } catch (error) {
-    console.error("Update profile error:", error);
-    return { success: false, error: error.message || "Failed to update profile" };
-  }
+    revalidatePath("/", "layout");
+    return updated;
+  });
 }
 
 export async function updatePassword(data) {
-  try {
+  return runAction("updatePassword", async () => {
     const user = await getCurrentUser();
-    if (!user) return { success: false, error: "Unauthorized" };
+    if (!user) throw unauthorized();
+    const { currentPassword, newPassword } = data || {};
+    if (!currentPassword || !newPassword) throw invalid("Current and new password are required.");
+    const weak = validatePasswordStrength(newPassword);
+    if (weak) throw invalid(weak);
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) throw invalid("Incorrect current password.");
 
-    const { currentPassword, newPassword } = data;
-
-    if (!currentPassword || !newPassword) {
-      return { success: false, error: "Current and new password are required" };
-    }
-
-    if (newPassword.length < 6) {
-      return { success: false, error: "New password must be at least 6 characters long" };
-    }
-
-    const isMatch = await verifyPassword(currentPassword, user.passwordHash);
-    if (!isMatch) {
-      return { success: false, error: "Incorrect current password" };
-    }
-
-    const newHash = await hashPassword(newPassword);
-
-    await db.user.update({
-      where: { id: user.id },
-      data: { passwordHash: newHash },
-    });
-
-    return { success: true, message: "Password updated successfully" };
-  } catch (error) {
-    console.error("Update password error:", error);
-    return { success: false, error: error.message || "Failed to update password" };
-  }
-}
-
-export async function getSessionUser() {
-  const user = await getCurrentUser();
-  if (!user) return null;
-
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    organizationId: user.organizationId,
-    organizationName: user.organization?.name,
-    currency: user.organization?.currency || "FCFA",
-    departmentId: user.activeDepartmentId || user.departmentId,
-    departmentName: user.department?.name,
-    activeDepartmentId: user.activeDepartmentId || user.departmentId,
-    memberships: user.memberships?.map((m) => ({
-      id: m.id,
-      departmentId: m.departmentId,
-      departmentName: m.department?.name,
-      domain: m.department?.domain,
-      isPrimary: m.isPrimary,
-    })),
-  };
+    const cookieStore = await cookies();
+    const currentRefresh = cookieStore.get(REFRESH_TOKEN_COOKIE)?.value;
+    await db.$transaction([
+      db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(newPassword) } }),
+      // Sign out every other session.
+      db.refreshToken.deleteMany({ where: { userId: user.id, ...(currentRefresh ? { token: { not: currentRefresh } } : {}) } }),
+    ]);
+    return { message: "Password updated. Other sessions were signed out." };
+  });
 }
 
 export async function switchActiveDepartment(departmentId) {
-  try {
+  return runAction("switchActiveDepartment", async () => {
     const user = await getCurrentUser();
-    if (!user) return { success: false, error: "Unauthorized" };
-
-    if (departmentId && departmentId !== "all") {
-      const isMember =
-        user.role === "ADMIN" ||
-        user.departmentId === departmentId ||
-        user.memberships?.some((m) => m.departmentId === departmentId);
-
-      if (!isMember) {
-        return { success: false, error: "You are not assigned to this department" };
-      }
-    }
-
+    if (!user) throw unauthorized();
     const cookieStore = await cookies();
-    if (departmentId) {
-      cookieStore.set("sf_active_dept", departmentId, {
+    if (!departmentId) {
+      cookieStore.delete(ACTIVE_DEPT_COOKIE);
+    } else {
+      const allowed = await accessibleDepartmentIds(user);
+      if (!allowed.includes(departmentId)) throw forbidden("You are not assigned to this department.");
+      cookieStore.set(ACTIVE_DEPT_COOKIE, departmentId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
         maxAge: 30 * 24 * 60 * 60,
       });
-    } else {
-      cookieStore.delete("sf_active_dept");
     }
-
     revalidatePath("/", "layout");
-    return { success: true };
-  } catch (error) {
-    console.error("Switch active department error:", error);
-    return { success: false, error: error.message };
-  }
+    return { departmentId: departmentId || null };
+  });
 }
-

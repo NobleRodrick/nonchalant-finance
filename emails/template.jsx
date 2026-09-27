@@ -1,225 +1,112 @@
-import {
-  Body,
-  Container,
-  Head,
-  Heading,
-  Html,
-  Preview,
-  Section,
-  Text,
-} from "@react-email/components";
-// Relative import on purpose: the `npm run email` preview server does not
-// resolve the "@/" alias from jsconfig.json.
-import { formatCurrency } from "../lib/currency";
+import { Body, Container, Head, Heading, Html, Preview, Section, Text, Link } from "@react-email/components";
+// Relative import on purpose: the `npm run email` preview server does not resolve "@/".
+import { formatMoney } from "../lib/format";
 
-// Dummy data for preview
-const PREVIEW_DATA = {
-  monthlyReport: {
-    userName: "John Doe",
-    type: "monthly-report",
-    data: {
-      month: "December",
-      stats: {
-        totalIncome: 5000,
-        totalExpenses: 3500,
-        byCategory: {
-          housing: 1500,
-          groceries: 600,
-          transportation: 400,
-          entertainment: 300,
-          utilities: 700,
-        },
-      },
-      insights: [
-        "Your housing expenses are 43% of your total spending - consider reviewing your housing costs.",
-        "Great job keeping entertainment expenses under control this month!",
-        "Setting up automatic savings could help you save 20% more of your income.",
-      ],
-    },
-  },
-  budgetAlert: {
-    userName: "John Doe",
-    type: "budget-alert",
-    data: {
-      percentageUsed: 85,
-      budgetAmount: 4000,
-      totalExpenses: 3400,
-    },
+const PREVIEW = {
+  type: "report-submitted",
+  userName: "Boss",
+  data: {
+    departmentName: "Department 1",
+    dateLabel: "Mon 05 Oct 2026",
+    totals: { moneyIn: 77000, moneyOut: 19000, result: 58000, cashExpected: 66000, handedOver: 60000, variance: -500, stockValue: 27000, debtsClosing: 11000 },
+    url: "https://example.com/boss/daily-reports/1",
   },
 };
-
-export default function EmailTemplate({
-  userName = "",
-  type = "monthly-report",
-  data = {},
-}) {
-  if (type === "monthly-report") {
-    return (
-      <Html>
-        <Head />
-        <Preview>Your Monthly Financial Report</Preview>
-        <Body style={styles.body}>
-          <Container style={styles.container}>
-            <Heading style={styles.title}>Monthly Financial Report</Heading>
-
-            <Text style={styles.text}>Hello {userName},</Text>
-            <Text style={styles.text}>
-              Here&rsquo;s your financial summary for {data?.month}:
-            </Text>
-
-            {/* Main Stats */}
-            <Section style={styles.statsContainer}>
-              <div style={styles.stat}>
-                <Text style={styles.text}>Total Income</Text>
-                <Text style={styles.heading}>{formatCurrency(data?.stats.totalIncome)}</Text>
-              </div>
-              <div style={styles.stat}>
-                <Text style={styles.text}>Total Expenses</Text>
-                <Text style={styles.heading}>{formatCurrency(data?.stats.totalExpenses)}</Text>
-              </div>
-              <div style={styles.stat}>
-                <Text style={styles.text}>Net</Text>
-                <Text style={styles.heading}>
-                  {formatCurrency(data?.stats.totalIncome - data?.stats.totalExpenses)}
-                </Text>
-              </div>
-            </Section>
-
-            {/* Category Breakdown */}
-            {data?.stats?.byCategory && (
-              <Section style={styles.section}>
-                <Heading style={styles.heading}>Expenses by Category</Heading>
-                {Object.entries(data?.stats.byCategory).map(
-                  ([category, amount]) => (
-                    <div key={category} style={styles.row}>
-                      <Text style={styles.text}>{category}</Text>
-                      <Text style={styles.text}>{formatCurrency(amount)}</Text>
-                    </div>
-                  )
-                )}
-              </Section>
-            )}
-
-            {/* AI Insights */}
-            {data?.insights && (
-              <Section style={styles.section}>
-                <Heading style={styles.heading}>Springer Finance Insights</Heading>
-                {data.insights.map((insight, index) => (
-                  <Text key={index} style={styles.text}>
-                    • {insight}
-                  </Text>
-                ))}
-              </Section>
-            )}
-
-            <Text style={styles.footer}>
-              Thank you for using Springer Finance. Keep tracking your finances for better
-              financial health!
-            </Text>
-          </Container>
-        </Body>
-      </Html>
-    );
-  }
-
-  if (type === "budget-alert") {
-    return (
-      <Html>
-        <Head />
-        <Preview>Budget Alert</Preview>
-        <Body style={styles.body}>
-          <Container style={styles.container}>
-            <Heading style={styles.title}>Budget Alert</Heading>
-            <Text style={styles.text}>Hello {userName},</Text>
-            <Text style={styles.text}>
-              You&rsquo;ve used {data?.percentageUsed.toFixed(1)}% of your
-              monthly budget.
-            </Text>
-            <Section style={styles.statsContainer}>
-              <div style={styles.stat}>
-                <Text style={styles.text}>Budget Amount</Text>
-                <Text style={styles.heading}>{formatCurrency(data?.budgetAmount)}</Text>
-              </div>
-              <div style={styles.stat}>
-                <Text style={styles.text}>Spent So Far</Text>
-                <Text style={styles.heading}>{formatCurrency(data?.totalExpenses)}</Text>
-              </div>
-              <div style={styles.stat}>
-                <Text style={styles.text}>Remaining</Text>
-                <Text style={styles.heading}>
-                  {formatCurrency(data?.budgetAmount - data?.totalExpenses)}
-                </Text>
-              </div>
-            </Section>
-          </Container>
-        </Body>
-      </Html>
-    );
-  }
-}
 
 const styles = {
-  body: {
-    backgroundColor: "#f6f9fc",
-    fontFamily: "-apple-system, sans-serif",
-  },
-  container: {
-    backgroundColor: "#ffffff",
-    margin: "0 auto",
-    padding: "20px",
-    borderRadius: "5px",
-    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-  },
-  title: {
-    color: "#1f2937",
-    fontSize: "32px",
-    fontWeight: "bold",
-    textAlign: "center",
-    margin: "0 0 20px",
-  },
-  heading: {
-    color: "#1f2937",
-    fontSize: "20px",
-    fontWeight: "600",
-    margin: "0 0 16px",
-  },
-  text: {
-    color: "#4b5563",
-    fontSize: "16px",
-    margin: "0 0 16px",
-  },
-  section: {
-    marginTop: "32px",
-    padding: "20px",
-    backgroundColor: "#f9fafb",
-    borderRadius: "5px",
-    border: "1px solid #e5e7eb",
-  },
-  statsContainer: {
-    margin: "32px 0",
-    padding: "20px",
-    backgroundColor: "#f9fafb",
-    borderRadius: "5px",
-  },
-  stat: {
-    marginBottom: "16px",
-    padding: "12px",
-    backgroundColor: "#fff",
-    borderRadius: "4px",
-    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
-  },
-  row: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "12px 0",
-    borderBottom: "1px solid #e5e7eb",
-  },
-  footer: {
-    color: "#6b7280",
-    fontSize: "14px",
-    textAlign: "center",
-    marginTop: "32px",
-    paddingTop: "16px",
-    borderTop: "1px solid #e5e7eb",
-  },
+  body: { backgroundColor: "#f6f7f9", fontFamily: "Arial, sans-serif" },
+  container: { backgroundColor: "#ffffff", margin: "0 auto", padding: "24px", borderRadius: "8px", maxWidth: "560px" },
+  h1: { color: "#0f172a", fontSize: "20px", margin: "0 0 12px" },
+  text: { color: "#334155", fontSize: "14px", lineHeight: "20px" },
+  row: { display: "flex", justifyContent: "space-between", borderBottom: "1px solid #e2e8f0", padding: "6px 0", fontSize: "14px" },
+  section: { margin: "16px 0" },
+  button: { display: "inline-block", backgroundColor: "#0f172a", color: "#ffffff", padding: "10px 16px", borderRadius: "6px", textDecoration: "none", fontSize: "14px" },
 };
+
+function Row({ label, value }) {
+  return (
+    <div style={styles.row}>
+      <span>{label}</span>
+      <strong>{value === null || value === undefined ? "—" : formatMoney(value)}</strong>
+    </div>
+  );
+}
+
+/** E-mails sent to the Boss: a daily report was sent, reports are missing, monthly statement. */
+export default function EmailTemplate({ userName = PREVIEW.userName, type = PREVIEW.type, data = PREVIEW.data }) {
+  if (type === "missing-reports") {
+    return (
+      <Html>
+        <Head />
+        <Preview>Daily reports not sent for {data.dateLabel}</Preview>
+        <Body style={styles.body}>
+          <Container style={styles.container}>
+            <Heading style={styles.h1}>Daily reports not sent</Heading>
+            <Text style={styles.text}>Hello {userName}, these departments have not sent their daily report for {data.dateLabel}:</Text>
+            <Section style={styles.section}>
+              {(data.departments || []).map((d) => (
+                <Text key={d} style={styles.text}>• {d}</Text>
+              ))}
+            </Section>
+            {data.url ? <Link href={data.url} style={styles.button}>Open daily reports</Link> : null}
+          </Container>
+        </Body>
+      </Html>
+    );
+  }
+  if (type === "monthly-statement") {
+    const i = data.income || {};
+    return (
+      <Html>
+        <Head />
+        <Preview>{data.organizationName}: statement for {data.periodLabel}</Preview>
+        <Body style={styles.body}>
+          <Container style={styles.container}>
+            <Heading style={styles.h1}>Statement for {data.periodLabel}</Heading>
+            <Text style={styles.text}>Hello {userName}, here is the month of {data.organizationName}.</Text>
+            <Section style={styles.section}>
+              <Row label="Money in" value={i.moneyIn} />
+              <Row label="Money out" value={i.moneyOut} />
+              <Row label="Result" value={i.result} />
+              <Row label="Cash handed to you" value={data.handedOver} />
+              <Row label="Debts owed by customers" value={data.debtsClosing} />
+            </Section>
+            {(data.insights || []).length ? (
+              <Section style={styles.section}>
+                {data.insights.map((t) => (
+                  <Text key={t} style={styles.text}>• {t}</Text>
+                ))}
+              </Section>
+            ) : null}
+            <Text style={styles.text}>{data.coverageText}</Text>
+            {data.url ? <Link href={data.url} style={styles.button}>Open the statements</Link> : null}
+          </Container>
+        </Body>
+      </Html>
+    );
+  }
+  const t = data.totals || {};
+  return (
+    <Html>
+      <Head />
+      <Preview>{data.departmentName}: daily report of {data.dateLabel}</Preview>
+      <Body style={styles.body}>
+        <Container style={styles.container}>
+          <Heading style={styles.h1}>{data.departmentName} sent the report of {data.dateLabel}</Heading>
+          <Text style={styles.text}>Hello {userName}, the report is waiting for your review.</Text>
+          <Section style={styles.section}>
+            <Row label="Money in" value={t.moneyIn} />
+            <Row label="Money out" value={t.moneyOut} />
+            <Row label="Result of the day" value={t.result} />
+            <Row label="Cash expected" value={t.cashExpected} />
+            <Row label="Handed over to you" value={t.handedOver} />
+            <Row label="Cash variance" value={t.variance} />
+            <Row label="Closing stock value" value={t.stockValue} />
+            <Row label="Debts owed by customers" value={t.debtsClosing} />
+          </Section>
+          {data.url ? <Link href={data.url} style={styles.button}>Review the report</Link> : null}
+        </Container>
+      </Body>
+    </Html>
+  );
+}

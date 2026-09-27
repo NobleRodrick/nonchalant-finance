@@ -34,17 +34,9 @@
   /* Radius */
   --radius: var(--radius);
   /* Typography */
-  --font-sans: Arial, Helvetica, sans-serif;
-  /* Keyframes alias */
-  --animation-gradientMove: gradientMove 3s ease infinite; 
+  --font-sans: var(--font-inter), Arial, Helvetica, sans-serif;
 }
 
-/* 3. Custom Keyframes */
-@keyframes gradientMove {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
 
 /* 4. Root Variables (Color Palette in OKLCH) */
 :root {
@@ -107,9 +99,6 @@
   body {
     font-family: var(--font-sans); 
   }
-  html {
-    scroll-behavior: smooth;
-  }
   * {
     @apply border-border;
   }
@@ -118,63 +107,49 @@
   }
 }
 
-/* 6. Utility Layer (Standard utilities) */
-@layer utilities {
-  /* The animation class is defined here */
-  .animate-gradient {
-    background-size: 200% 200%;
-    animation: var(--animation-gradientMove);
+/* 6. Figures line up in columns everywhere. */
+@layer base {
+  body {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-/* 7. RAW CSS (Contains the Fix for the 'gradient' error) */
-
-/* The base gradient class defined using theme() */
-.gradient {
-  background-image: linear-gradient(to bottom right, theme('colors.blue.600'), theme('colors.purple.600'));
-}
-
-/* The gradient-title class defined using theme() for max compatibility */
-.gradient-title {
-  /* Applying the .gradient styles directly */
-  background-image: linear-gradient(to bottom right, theme('colors.blue.600'), theme('colors.purple.600'));
-  
-  /* Applying other utilities using raw CSS properties */
-  font-weight: 800; /* font-extrabold */
-  letter-spacing: -0.05em; /* tracking-tighter */
-  padding-right: 0.5rem; /* pr-2 */
-  padding-bottom: 0.5rem; /* pb-2 */
-  color: transparent;
-  background-clip: text;
-}
-
-.hero-image-wrapper {
-  perspective: 1000px;
-}
-
-.hero-image {
-  transform: rotateX(15deg) scale(1);
-  transition: transform 0.5s ease-out;
-  will-change: transform;
-}
-
-.hero-image.scrolled {
-  transform: rotateX(0deg) scale(1) translateY(40px);
+/* 7. Printing: A4 pages for reports, statements and stock sheets (app chrome carries
+   print:hidden). An 80 mm receipt / slip prints alone when body has .print-receipt. */
+@page {
+  size: A4;
+  margin: 12mm;
 }
 
 @media print {
-  header,
-  footer {
-    display: none !important;
-  }
-
-  main {
-    padding-top: 0 !important;
-    min-height: auto !important;
-  }
-
   body {
     background: white !important;
-    color: black !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr,
+  section {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+  body.print-receipt * {
+    visibility: hidden;
+  }
+  body.print-receipt .receipt,
+  body.print-receipt .receipt * {
+    visibility: visible;
+  }
+  body.print-receipt .receipt {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    border: none;
   }
 }

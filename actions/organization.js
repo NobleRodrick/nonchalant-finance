@@ -1,424 +1,432 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/prisma";
 import { getCurrentUser, hashPassword } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { runAction } from "@/lib/action";
+import { requireAdmin } from "@/lib/access";
+import { forbidden, invalid, notFound, unauthorized } from "@/lib/errors";
+import { recordAudit } from "@/lib/audit";
+import { notifyUsers } from "@/lib/notifications";
+import { DOMAIN_LIST, getDomain } from "@/lib/domains/registry";
+import { validatePasswordStrength } from "@/lib/password-utils";
+
+const TITLE_MAX = 60;
+const DOMAINS = DOMAIN_LIST.map((d) => d.key);
+const CODE_RE = /^[A-Z0-9]{2,6}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function slugify(text) {
-  return text
-    .toString()
+  const base = String(text)
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-") + "-" + Math.random().toString(36).substring(2, 6);
+    .replace(/[^\w-]+/g, "")
+    .replace(/--+/g, "-")
+    .slice(0, 40);
+  return `${base || "org"}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function cleanDomain(domain) {
+  if (!domain) throw invalid("Choose the department type.");
+  if (!DOMAINS.includes(domain)) throw invalid(`Unknown department type "${domain}".`);
+  return domain;
+}
+
+/** Next free short code for a department type in the organization: RST, RST2, RST3 … */
+async function nextDepartmentCode(tx, organizationId, domain) {
+  const prefix = getDomain(domain).codePrefix;
+  const used = new Set((await tx.department.findMany({ where: { organizationId }, select: { code: true } })).map((d) => d.code));
+  if (!used.has(prefix)) return prefix;
+  for (let i = 2; i < 1000; i += 1) if (!used.has(`${prefix}${i}`)) return `${prefix}${i}`;
+  return `${prefix}${Date.now().toString(36).slice(-3).toUpperCase()}`;
+}
+
+async function cleanCode(tx, organizationId, code, exceptId = null) {
+  const c = String(code || "").trim().toUpperCase();
+  if (!CODE_RE.test(c)) throw invalid("The short code must be 2 to 6 letters or digits (for example RST).");
+  const clash = await tx.department.findFirst({ where: { organizationId, code: c, ...(exceptId ? { id: { not: exceptId } } : {}) } });
+  if (clash) throw invalid(`The code ${c} is already used by ${clash.name}.`);
+  return c;
+}
+
+function cleanDiscountLimit(value) {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw invalid("The cashier discount limit must be a whole number of francs (0 = not allowed).");
+  return n;
+}
+
+/** Creates a department with its cash drawer. */
+async function createDepartmentRecord(tx, { user, organizationId, name, domain, description, code, cashierDiscountLimit, openingCashFloat = 0 }) {
+  const dept = await tx.department.create({
+    data: {
+      organizationId,
+      name,
+      domain,
+      description: description || null,
+      code: code ? await cleanCode(tx, organizationId, code) : await nextDepartmentCode(tx, organizationId, domain),
+      cashierDiscountLimit: cashierDiscountLimit ?? 0,
+      openingCashFloat: Number.isInteger(Number(openingCashFloat)) && Number(openingCashFloat) > 0 ? Number(openingCashFloat) : 0,
+      isActive: true,
+    },
+  });
+  await tx.account.create({
+    data: { name: "Cash drawer", type: "CURRENT", balance: 0, isDefault: true, organizationId, departmentId: dept.id, userId: user.id },
+  });
+  return dept;
+}
+
+/** The job title the Boss gives a person (free text, optional). */
+function cleanTitle(title) {
+  const t = String(title ?? "").trim().replace(/\s+/g, " ");
+  return t ? t.slice(0, TITLE_MAX) : null;
+}
+
+/**
+ * Normalizes the departments a head is assigned to: [{ departmentId, isPrimary }], exactly one
+ * primary (the one they open first). Accepts ids or objects.
+ */
+function normalizeMemberships(list) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of Array.isArray(list) ? list : []) {
+    const m = typeof raw === "string" ? { departmentId: raw } : raw;
+    if (!m?.departmentId || seen.has(m.departmentId)) continue;
+    seen.add(m.departmentId);
+    out.push({ departmentId: m.departmentId, isPrimary: Boolean(m.isPrimary) });
+  }
+  if (out.length && !out.some((m) => m.isPrimary)) out[0].isPrimary = true;
+  let primarySeen = false;
+  for (const m of out) {
+    if (m.isPrimary && primarySeen) m.isPrimary = false;
+    if (m.isPrimary) primarySeen = true;
+  }
+  return out;
+}
+
+async function assertDepartmentsInOrg(client, organizationId, departmentIds) {
+  if (!departmentIds.length) return;
+  const count = await client.department.count({ where: { id: { in: departmentIds }, organizationId } });
+  if (count !== new Set(departmentIds).size) throw forbidden("One or more departments are not in your organization.");
+}
+
+/** Replaces the departments a head is assigned to and keeps User.departmentId = primary. */
+async function syncMemberships(tx, userId, memberships) {
+  const ids = memberships.map((m) => m.departmentId);
+  await tx.userDepartment.deleteMany({ where: { userId, departmentId: { notIn: ids } } });
+  for (const m of memberships) {
+    await tx.userDepartment.upsert({
+      where: { userId_departmentId: { userId, departmentId: m.departmentId } },
+      update: { isPrimary: m.isPrimary, isActive: true },
+      create: { userId, departmentId: m.departmentId, isPrimary: m.isPrimary, isActive: true },
+    });
+  }
+  const primary = memberships.find((m) => m.isPrimary)?.departmentId || null;
+  await tx.user.update({ where: { id: userId }, data: { departmentId: primary } });
+}
+
+/** Tells a head about departments they were just put in charge of. */
+async function notifyNewDepartments(tx, { boss, userId, departmentIds }) {
+  if (!departmentIds.length) return;
+  const depts = await tx.department.findMany({ where: { id: { in: departmentIds } }, select: { id: true, name: true } });
+  for (const d of depts) {
+    await notifyUsers(tx, {
+      organizationId: boss.organizationId,
+      userIds: [userId],
+      departmentId: d.id,
+      kind: "DEPARTMENT_HEAD",
+      title: `You are now a head of ${d.name}`,
+      body: "You run its day, hand the cash to the Boss and send the daily report.",
+      href: `/d/${d.id}`,
+    });
+  }
 }
 
 export async function createOrganization(data) {
-  try {
+  return runAction("createOrganization", async () => {
     const user = await getCurrentUser();
-    if (!user) return { success: false, error: "Unauthorized" };
-    if (user.role !== "ADMIN") return { success: false, error: "Only admins can create an organization" };
-    if (user.organizationId) {
-      return { success: false, error: "You already have an organization set up" };
-    }
+    if (!user) throw unauthorized();
+    if (user.role !== "ADMIN") throw forbidden("Only the Boss can create an organization.");
+    if (user.organizationId) throw invalid("You already have an organization set up.");
 
-    const { name, currency = "FCFA", departments = [], initialEmployees = [] } = data;
+    const name = String(data?.name || "").trim();
+    if (!name) throw invalid("Organization name is required.");
+    const departments = (Array.isArray(data?.departments) ? data.departments : [])
+      .map((d) => (typeof d === "string" ? { name: d, domain: "RESTAURANT" } : d))
+      .map((d) => ({ name: String(d?.name || "").trim(), domain: cleanDomain(d?.domain), description: d?.description || null }))
+      .filter((d) => d.name);
+    if (!departments.length) throw invalid("Add at least one department.");
+    const employees = Array.isArray(data?.initialEmployees) ? data.initialEmployees : [];
 
-    if (!name || name.trim().length === 0) {
-      return { success: false, error: "Organization name is required" };
-    }
-
-    const slug = slugify(name);
-
-    // Run creation in transaction
-    const result = await db.$transaction(async (tx) => {
-      // 1. Create Organization
-      const org = await tx.organization.create({
-        data: {
-          name: name.trim(),
-          slug,
-          currency: currency || "FCFA",
-        },
+    const org = await db.$transaction(async (tx) => {
+      const created = await tx.organization.create({
+        data: { name, slug: slugify(name), currency: data?.currency || "FCFA", timezone: data?.timezone || "Africa/Douala" },
       });
+      await tx.user.update({ where: { id: user.id }, data: { organizationId: created.id } });
 
-      // 2. Link the Boss to this organization
-      await tx.user.update({
-        where: { id: user.id },
-        data: { organizationId: org.id },
-      });
-
-      // 3. Create initial departments
-      const createdDepartments = {};
-      for (const item of departments) {
-        const deptName = typeof item === "string" ? item.trim() : item?.name?.trim();
-        const deptDomain = (typeof item === "object" && item?.domain) || "RESTAURANT";
-        if (deptName) {
-          const dept = await tx.department.create({
-            data: {
-              organizationId: org.id,
-              name: deptName,
-              domain: deptDomain,
-              isActive: true,
-            },
-          });
-          createdDepartments[deptName.toLowerCase()] = dept.id;
-        }
+      const deptByName = {};
+      for (const d of departments) {
+        const dept = await createDepartmentRecord(tx, { user, organizationId: created.id, name: d.name, domain: d.domain, description: d.description });
+        deptByName[d.name.toLowerCase()] = dept.id;
       }
 
-      // 4. Create initial employees if provided
-      for (const emp of initialEmployees) {
-        if (emp.email && emp.tempPassword && emp.name) {
-          const existing = await tx.user.findUnique({
-            where: { email: emp.email.toLowerCase().trim() },
-          });
-
-          if (!existing) {
-            const passwordHash = await hashPassword(emp.tempPassword);
-            let assignedDeptId = null;
-
-            if (emp.departmentName && createdDepartments[emp.departmentName.trim().toLowerCase()]) {
-              assignedDeptId = createdDepartments[emp.departmentName.trim().toLowerCase()];
-            } else if (emp.departmentId) {
-              assignedDeptId = emp.departmentId;
-            }
-
-            const newUser = await tx.user.create({
-              data: {
-                name: emp.name.trim(),
-                email: emp.email.toLowerCase().trim(),
-                phone: emp.phone || null,
-                passwordHash,
-                role: emp.role || "STAFF",
-                organizationId: org.id,
-                departmentId: assignedDeptId,
-                isActive: true,
-              },
-            });
-
-            if (assignedDeptId) {
-              await tx.userDepartment.create({
-                data: {
-                  userId: newUser.id,
-                  departmentId: assignedDeptId,
-                  isPrimary: true,
-                  isActive: true,
-                },
-              });
-            }
-          }
-        }
+      for (const emp of employees) {
+        const email = String(emp?.email || "").toLowerCase().trim();
+        const empName = String(emp?.name || "").trim();
+        if (!email || !empName || !emp?.tempPassword) continue;
+        if (!EMAIL_RE.test(email)) throw invalid(`Invalid email for ${empName}.`);
+        const weak = validatePasswordStrength(emp.tempPassword);
+        if (weak) throw invalid(`${empName}: ${weak}`);
+        if (await tx.user.findUnique({ where: { email } })) throw invalid(`A user with email ${email} already exists.`);
+        const names = Array.isArray(emp.departmentNames) && emp.departmentNames.length ? emp.departmentNames : [emp.departmentName];
+        const deptIds = names.map((n) => deptByName[String(n || "").trim().toLowerCase()]).filter(Boolean);
+        const created2 = await tx.user.create({
+          data: {
+            name: empName,
+            email,
+            phone: emp.phone || null,
+            title: cleanTitle(emp.title),
+            passwordHash: await hashPassword(emp.tempPassword),
+            role: "HEAD",
+            organizationId: created.id,
+            isActive: true,
+          },
+        });
+        if (deptIds.length) await syncMemberships(tx, created2.id, normalizeMemberships(deptIds.map((id, i) => ({ departmentId: id, isPrimary: i === 0 }))));
       }
 
-      return org;
+      await recordAudit(tx, {
+        user: { ...user, organizationId: created.id },
+        organizationId: created.id,
+        action: "ORGANIZATION_CREATED",
+        entityType: "Organization",
+        entityId: created.id,
+        after: { name, departments: departments.map((d) => `${d.name} (${d.domain})`) },
+      });
+      return created;
     });
 
-    revalidatePath("/dashboard");
-    revalidatePath("/onboarding");
-
-    return { success: true, organization: result };
-  } catch (error) {
-    console.error("Create organization error:", error);
-    return { success: false, error: error.message || "Failed to create organization" };
-  }
+    // No revalidation here: the setup wizard shows its last step, then opens the app.
+    
+    return { organization: org };
+  });
 }
 
-export async function getOrganizationOverview() {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN" || !user.organizationId) return null;
-
-    const org = await db.organization.findUnique({
-      where: { id: user.organizationId },
-      include: {
-        departments: {
-          include: {
-            _count: {
-              select: {
-                users: true,
-                transactions: true,
-              },
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        },
-        users: {
-          include: {
-            department: true,
-          },
-          orderBy: { createdAt: "desc" },
-        },
-      },
-    });
-
-    return org;
-  } catch (error) {
-    console.error("Get organization overview error:", error);
-    return null;
-  }
-}
 
 export async function createDepartment(data) {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN") return { success: false, error: "Only admins can add departments" };
-    if (!user.organizationId) return { success: false, error: "No organization found" };
-
-    const { name, description, domain = "RESTAURANT" } = data;
-    if (!name || !name.trim()) return { success: false, error: "Department name is required" };
-
-    const department = await db.department.create({
-      data: {
+  return runAction("createDepartment", async () => {
+    const user = await requireAdmin();
+    const name = String(data?.name || "").trim();
+    if (!name) throw invalid("Department name is required.");
+    const domain = cleanDomain(data?.domain);
+    const department = await db.$transaction(async (tx) => {
+      const clash = await tx.department.findFirst({ where: { organizationId: user.organizationId, name: { equals: name, mode: "insensitive" } } });
+      if (clash) throw invalid(`A department called "${clash.name}" already exists.`);
+      const created = await createDepartmentRecord(tx, {
+        user,
         organizationId: user.organizationId,
-        name: name.trim(),
-        description: description?.trim() || null,
-        domain: domain || "RESTAURANT",
-        isActive: true,
-      },
+        name,
+        domain,
+        description: String(data?.description || "").trim() || null,
+        code: data?.code,
+        cashierDiscountLimit: cleanDiscountLimit(data?.cashierDiscountLimit),
+        openingCashFloat: data?.openingCashFloat,
+      });
+      await recordAudit(tx, { user, departmentId: created.id, action: "DEPARTMENT_CREATED", entityType: "Department", entityId: created.id, after: created });
+      return created;
     });
-
-    revalidatePath("/organization/departments");
-    revalidatePath("/dashboard");
-
-    return { success: true, data: department };
-  } catch (error) {
-    console.error("Create department error:", error);
-    return { success: false, error: error.message || "Failed to create department" };
-  }
+    revalidatePath("/", "layout");
+    return department;
+  });
 }
 
-export async function createEmployee(data) {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN") return { success: false, error: "Only admins can invite/create employees" };
-    if (!user.organizationId) return { success: false, error: "No organization found" };
-
-    const { name, email, phone, tempPassword, role = "STAFF", departmentId } = data;
-
-    if (!name || !email || !tempPassword) {
-      return { success: false, error: "Name, email, and temporary password are required" };
+export async function updateDepartment(data) {
+  return runAction("updateDepartment", async () => {
+    const user = await requireAdmin();
+    const existing = await db.department.findFirst({ where: { id: data?.departmentId, organizationId: user.organizationId } });
+    if (!existing) throw notFound("Department not found.");
+    const name = String(data?.name ?? existing.name).trim();
+    if (!name) throw invalid("Department name is required.");
+    const update = { name, description: data?.description !== undefined ? String(data.description).trim() || null : existing.description };
+    if (data?.domain && data.domain !== existing.domain) {
+      const [tx, dishes, reports] = await Promise.all([
+        db.transaction.count({ where: { departmentId: existing.id } }),
+        db.menuItem.count({ where: { departmentId: existing.id } }),
+        db.dailyReport.count({ where: { departmentId: existing.id } }),
+      ]);
+      if (tx + dishes + reports > 0) throw invalid("The department type cannot change once the department has dishes, records or reports.");
+      update.domain = cleanDomain(data.domain);
     }
+    if (data?.code !== undefined && data.code !== existing.code) update.code = await cleanCode(db, user.organizationId, data.code, existing.id);
+    const limit = cleanDiscountLimit(data?.cashierDiscountLimit);
+    if (limit !== undefined) update.cashierDiscountLimit = limit;
+    if (data?.openingCashFloat !== undefined && data.openingCashFloat !== "") {
+      const f = Number(data.openingCashFloat);
+      if (!Number.isInteger(f) || f < 0) throw invalid("The opening cash must be a whole number of francs.");
+      update.openingCashFloat = f;
+    }
+    if (data?.isActive !== undefined) update.isActive = Boolean(data.isActive);
 
-    const existingUser = await db.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    const department = await db.$transaction(async (tx) => {
+      const updated = await tx.department.update({ where: { id: existing.id }, data: update });
+      await recordAudit(tx, { user, departmentId: existing.id, action: "DEPARTMENT_UPDATED", entityType: "Department", entityId: existing.id, before: existing, after: updated });
+      return updated;
     });
+    revalidatePath("/", "layout");
+    return department;
+  });
+}
 
-    if (existingUser) {
-      return { success: false, error: "A user with this email already exists" };
-    }
 
-    const passwordHash = await hashPassword(tempPassword);
+/** The Boss adds a department head: name, e-mail, title, departments, temporary password. */
+export async function createEmployee(data) {
+  return runAction("createEmployee", async () => {
+    const user = await requireAdmin();
+    const name = String(data?.name || "").trim();
+    const email = String(data?.email || "").toLowerCase().trim();
+    if (!name || !email || !data?.tempPassword) throw invalid("Name, email, and temporary password are required.");
+    if (!EMAIL_RE.test(email)) throw invalid("Enter a valid email address.");
+    const weak = validatePasswordStrength(data.tempPassword);
+    if (weak) throw invalid(weak);
+    const memberships = normalizeMemberships(data?.memberships || data?.departmentIds || (data?.departmentId ? [data.departmentId] : []));
+    if (!memberships.length) throw invalid("Choose at least one department for this department head.");
+    await assertDepartmentsInOrg(db, user.organizationId, memberships.map((m) => m.departmentId));
+    if (await db.user.findUnique({ where: { email } })) throw invalid("A user with this email already exists.");
 
     const employee = await db.$transaction(async (tx) => {
       const created = await tx.user.create({
         data: {
-          name: name.trim(),
-          email: email.toLowerCase().trim(),
-          phone: phone || null,
-          passwordHash,
-          role,
+          name,
+          email,
+          phone: String(data?.phone || "").trim() || null,
+          title: cleanTitle(data?.title),
+          passwordHash: await hashPassword(data.tempPassword),
+          role: "HEAD",
           organizationId: user.organizationId,
-          departmentId: departmentId || null,
           isActive: true,
         },
-        include: {
-          department: true,
-        },
       });
-
-      if (departmentId) {
-        await tx.userDepartment.create({
-          data: {
-            userId: created.id,
-            departmentId,
-            isPrimary: true,
-            isActive: true,
-          },
-        });
-      }
-
+      await syncMemberships(tx, created.id, memberships);
+      await recordAudit(tx, { user, action: "EMPLOYEE_CREATED", entityType: "User", entityId: created.id, after: { name, email, title: created.title, departments: memberships.map((m) => m.departmentId) } });
       return created;
     });
-
-    revalidatePath("/organization/employees");
-    revalidatePath("/dashboard");
-
-    return { success: true, data: employee };
-  } catch (error) {
-    console.error("Create employee error:", error);
-    return { success: false, error: error.message || "Failed to create employee" };
-  }
+    revalidatePath("/", "layout");
+    return { id: employee.id, name: employee.name, email: employee.email, title: employee.title, role: employee.role };
+  });
 }
 
+/**
+ * The Boss edits a department head: name, phone, title, active flag and the departments they
+ * head (one or several). The Boss's own account keeps the Boss role and cannot be deactivated.
+ */
 export async function updateEmployee(data) {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN") return { success: false, error: "Only admins can update employees" };
+  return runAction("updateEmployee", async () => {
+    const user = await requireAdmin();
+    const employee = await db.user.findFirst({
+      where: { id: data?.employeeId, organizationId: user.organizationId },
+      include: { memberships: true },
+    });
+    if (!employee) throw notFound("Person not found.");
 
-    const { employeeId, role, departmentId, isActive } = data;
+    const update = {};
+    if (data?.role !== undefined && data.role !== employee.role) throw invalid("Roles cannot be changed: the Boss created the business and everyone else is a department head.");
+    if (data?.isActive !== undefined) {
+      if (employee.id === user.id && !data.isActive) throw invalid("You cannot deactivate yourself.");
+      update.isActive = Boolean(data.isActive);
+    }
+    if (data?.name !== undefined) update.name = String(data.name).trim() || employee.name;
+    if (data?.phone !== undefined) update.phone = String(data.phone).trim() || null;
+    if (data?.title !== undefined) update.title = cleanTitle(data.title);
 
-    if (!employeeId) return { success: false, error: "Employee ID is required" };
-
-    // Prevent admin from demoting themselves accidentally
-    if (employeeId === user.id && role && role !== "ADMIN") {
-      return { success: false, error: "You cannot demote yourself from Admin" };
+    let memberships = null;
+    const list = data?.memberships ?? data?.departmentIds;
+    if (list !== undefined && employee.role !== "ADMIN") {
+      memberships = normalizeMemberships(list);
+      if (!memberships.length) throw invalid("A department head must head at least one department.");
+      await assertDepartmentsInOrg(db, user.organizationId, memberships.map((m) => m.departmentId));
     }
 
-    const updateData = {};
-    if (role !== undefined) updateData.role = role;
-    if (departmentId !== undefined) updateData.departmentId = departmentId || null;
-    if (isActive !== undefined) updateData.isActive = isActive;
-
-    const updated = await db.user.update({
-      where: { id: employeeId, organizationId: user.organizationId },
-      data: updateData,
-      include: { department: true },
-    });
-
-    revalidatePath("/organization/employees");
-    revalidatePath("/dashboard");
-
-    return { success: true, data: updated };
-  } catch (error) {
-    console.error("Update employee error:", error);
-    return { success: false, error: error.message || "Failed to update employee" };
-  }
-}
-
-export async function updateDepartment(data) {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN") return { success: false, error: "Only admins can update departments" };
-    if (!user.organizationId) return { success: false, error: "No organization found" };
-
-    const { departmentId, name, description, domain, isActive } = data;
-    if (!departmentId) return { success: false, error: "Department ID is required" };
-    if (!name || !name.trim()) return { success: false, error: "Department name is required" };
-
-    const updateData = {
-      name: name.trim(),
-      description: description?.trim() || null,
-    };
-    if (domain) updateData.domain = domain;
-    if (isActive !== undefined) updateData.isActive = isActive;
-
-    const department = await db.department.update({
-      where: { id: departmentId, organizationId: user.organizationId },
-      data: updateData,
-    });
-
-    revalidatePath("/organization/departments");
-    revalidatePath("/dashboard");
-
-    return { success: true, data: department };
-  } catch (error) {
-    console.error("Update department error:", error);
-    return { success: false, error: error.message || "Failed to update department" };
-  }
-}
-
-export async function getDepartments() {
-  try {
-    const user = await getCurrentUser();
-    if (!user || !user.organizationId) return [];
-
-    if (user.role === "ADMIN") {
-      return await db.department.findMany({
-        where: { organizationId: user.organizationId },
-        orderBy: { name: "asc" },
+    const updated = await db.$transaction(async (tx) => {
+      const u = await tx.user.update({ where: { id: employee.id }, data: update });
+      if (memberships) {
+        await syncMemberships(tx, employee.id, memberships);
+        const before = new Set(employee.memberships.map((m) => m.departmentId));
+        await notifyNewDepartments(tx, { boss: user, userId: employee.id, departmentIds: memberships.map((m) => m.departmentId).filter((id) => !before.has(id)) });
+      }
+      if (update.isActive === false) await tx.refreshToken.deleteMany({ where: { userId: employee.id } });
+      await recordAudit(tx, {
+        user,
+        action: "EMPLOYEE_UPDATED",
+        entityType: "User",
+        entityId: employee.id,
+        before: { title: employee.title, isActive: employee.isActive, departments: employee.memberships.map((m) => m.departmentId) },
+        after: { title: u.title, isActive: u.isActive, departments: memberships ? memberships.map((m) => m.departmentId) : undefined },
       });
-    }
-
-    const deptIds = [
-      ...(user.departmentId ? [user.departmentId] : []),
-      ...(user.memberships?.map((m) => m.departmentId) || []),
-    ];
-
-    if (deptIds.length === 0) return [];
-
-    return await db.department.findMany({
-      where: { id: { in: Array.from(new Set(deptIds)) }, organizationId: user.organizationId },
-      orderBy: { name: "asc" },
+      return u;
     });
-  } catch (error) {
-    console.error("Get departments error:", error);
-    return [];
-  }
+    revalidatePath("/", "layout");
+    return { id: updated.id, title: updated.title, isActive: updated.isActive };
+  });
 }
 
-export async function assignUserDepartment(data) {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN") {
-      return { success: false, error: "Only admins can assign employees to departments" };
-    }
-
-    const { userId, departmentId, isPrimary = false } = data;
-    if (!userId || !departmentId) {
-      return { success: false, error: "User ID and Department ID are required" };
-    }
-
-    const membership = await db.userDepartment.upsert({
-      where: {
-        userId_departmentId: { userId, departmentId },
-      },
-      update: {
-        isActive: true,
-        isPrimary,
-      },
-      create: {
-        userId,
-        departmentId,
-        isPrimary,
-        isActive: true,
-      },
-      include: {
-        department: true,
-      },
+export async function resetEmployeePassword(data) {
+  return runAction("resetEmployeePassword", async () => {
+    const user = await requireAdmin();
+    const employee = await db.user.findFirst({ where: { id: data?.employeeId, organizationId: user.organizationId } });
+    if (!employee) throw notFound("Employee not found.");
+    const weak = validatePasswordStrength(data?.tempPassword);
+    if (weak) throw invalid(weak);
+    await db.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: employee.id }, data: { passwordHash: await hashPassword(data.tempPassword) } });
+      await tx.refreshToken.deleteMany({ where: { userId: employee.id } });
+      await recordAudit(tx, { user, action: "EMPLOYEE_PASSWORD_RESET", entityType: "User", entityId: employee.id });
     });
-
-    if (isPrimary) {
-      await db.user.update({
-        where: { id: userId },
-        data: { departmentId },
-      });
-    }
-
-    revalidatePath("/organization/employees");
-    return { success: true, data: membership };
-  } catch (error) {
-    console.error("Assign user department error:", error);
-    return { success: false, error: error.message };
-  }
+    return { id: employee.id };
+  });
 }
 
-export async function removeUserDepartment(data) {
-  try {
-    const user = await getCurrentUser();
-    if (!user || user.role !== "ADMIN") {
-      return { success: false, error: "Only admins can remove department assignments" };
+export async function updateOrganizationSettings(data) {
+  return runAction("updateOrganizationSettings", async () => {
+    const user = await requireAdmin();
+    const name = String(data?.name || "").trim();
+    if (!name) throw invalid("Organization name is required.");
+    const timezone = String(data?.timezone || "Africa/Douala");
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: timezone });
+    } catch {
+      throw invalid("Unknown time zone.");
     }
-
-    const { userId, departmentId } = data;
-    await db.userDepartment.deleteMany({
-      where: { userId, departmentId },
-    });
-
-    const nextMembership = await db.userDepartment.findFirst({
-      where: { userId, isActive: true },
-      orderBy: { isPrimary: "desc" },
-    });
-
-    await db.user.update({
-      where: { id: userId },
-      data: { departmentId: nextMembership?.departmentId || null },
-    });
-
-    revalidatePath("/organization/employees");
-    return { success: true };
-  } catch (error) {
-    console.error("Remove user department error:", error);
-    return { success: false, error: error.message };
-  }
+    const org = await db.organization.update({ where: { id: user.organizationId }, data: { name, timezone } });
+    revalidatePath("/", "layout");
+    return org;
+  });
 }
 
+/**
+ * The Boss makes a person a head of a department (they keep their other departments), or
+ * takes them off it (`remove: true`; a head keeps at least one department).
+ */
+export async function setDepartmentHead(data) {
+  return runAction("setDepartmentHead", async () => {
+    const boss = await requireAdmin();
+    const dept = await db.department.findFirst({ where: { id: data?.departmentId, organizationId: boss.organizationId } });
+    if (!dept) throw notFound("Department not found.");
+    const person = await db.user.findFirst({ where: { id: data?.userId, organizationId: boss.organizationId }, include: { memberships: true } });
+    if (!person) throw notFound("Person not found.");
+    if (person.role === "ADMIN") throw invalid("The Boss oversees every department; choose a department head.");
+    if (!person.isActive) throw invalid("This account is deactivated. Reactivate it first.");
+    const current = person.memberships.map((m) => ({ departmentId: m.departmentId, isPrimary: m.isPrimary }));
+    const next = data?.remove
+      ? current.filter((m) => m.departmentId !== dept.id)
+      : current.some((m) => m.departmentId === dept.id) ? current : [...current, { departmentId: dept.id, isPrimary: current.length === 0 }];
+    if (!next.length) throw invalid(`${person.name} heads only ${dept.name}. Give them another department first, or deactivate the account.`);
+    await db.$transaction(async (tx) => {
+      await syncMemberships(tx, person.id, normalizeMemberships(next));
+      if (!data?.remove) await notifyNewDepartments(tx, { boss, userId: person.id, departmentIds: current.some((m) => m.departmentId === dept.id) ? [] : [dept.id] });
+      await recordAudit(tx, { user: boss, departmentId: dept.id, action: data?.remove ? "DEPARTMENT_HEAD_REMOVED" : "DEPARTMENT_HEAD_ADDED", entityType: "Department", entityId: dept.id, after: { userId: person.id } });
+    });
+    revalidatePath("/", "layout");
+    return { departmentId: dept.id, userId: person.id, removed: Boolean(data?.remove) };
+  });
+}

@@ -13,7 +13,7 @@ import { Loader2, Lock, Mail, Building2, ArrowRight } from "lucide-react";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/dashboard";
+  const redirect = searchParams.get("redirect") || "/home";
 
   const [formData, setFormData] = useState({
     email: "",
@@ -26,15 +26,10 @@ function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await loginUser(formData);
+      const res = await loginUser({ ...formData, redirect });
       if (res.success) {
-        toast.success(`Welcome back, ${res.user.name}!`);
-
-        if (res.needsOnboarding) {
-          router.push("/onboarding");
-        } else {
-          router.push(redirect);
-        }
+        toast.success(`Welcome back, ${res.data.user.name}!`);
+        router.push(res.data.needsOnboarding ? "/onboarding" : res.data.redirectTo);
         router.refresh();
       } else {
         toast.error(res.error || "Failed to log in");
@@ -49,23 +44,24 @@ function LoginForm() {
   return (
     <Card className="w-full max-w-md shadow-lg border-slate-200">
       <CardHeader className="space-y-1 text-center">
-        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+        <div className="w-12 h-12 bg-emerald-100 text-slate-900 rounded-xl flex items-center justify-center mx-auto mb-2">
           <Building2 className="h-6 w-6" />
         </div>
-        <CardTitle className="text-2xl font-bold tracking-tight">Sign In to Your Workspace</CardTitle>
+        <CardTitle className="text-2xl font-bold tracking-tight">Sign in</CardTitle>
         <CardDescription>
-          Enter your credentials (or temporary password provided by your manager)
+          Use your e-mail and password (or the temporary password the Boss gave you).
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Work Email</label>
+            <label htmlFor="login-email" className="text-sm font-medium">E-mail</label>
             <div className="relative">
               <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
+                id="login-email"
                 type="email"
-                placeholder="name@company.com"
+                placeholder="name@example.com"
                 className="pl-9"
                 required
                 value={formData.email}
@@ -75,10 +71,11 @@ function LoginForm() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password</label>
+            <label htmlFor="login-password" className="text-sm font-medium">Password</label>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
+                id="login-password"
                 type="password"
                 placeholder="••••••••"
                 className="pl-9"
@@ -92,7 +89,7 @@ function LoginForm() {
             </p>
           </div>
 
-          <Button type="submit" className="w-full h-11 bg-blue-600 hover:bg-blue-700" disabled={loading}>
+          <Button type="submit" className="w-full h-11" disabled={loading}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -109,7 +106,7 @@ function LoginForm() {
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           Business Owner / Boss?{" "}
-          <Link href="/register" className="font-semibold text-blue-600 hover:underline">
+          <Link href="/register" className="font-semibold text-slate-900 hover:underline">
             Register an Organization
           </Link>
         </div>
@@ -124,7 +121,7 @@ export default function LoginPage() {
       <Suspense
         fallback={
           <div className="w-full max-w-md h-96 flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <Loader2 className="h-8 w-8 animate-spin text-slate-900" />
           </div>
         }
       >

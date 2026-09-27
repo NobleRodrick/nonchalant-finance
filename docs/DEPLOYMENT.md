@@ -1,0 +1,129 @@
+# Deploying this release to the existing Supabase database
+
+Back up, compare, baseline, rehearse on a copy, then migrate (plan §12).
+Nothing in this release was applied to the live database; these steps are yours to run.
+
+## 0. Environment variables
+
+| Variable | Action |
+|---|---|
+| `JWT_SECRET` | **New and required.** ≥ 32 random characters, same value locally and on the host. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Changing it signs everyone out (old tokens were signed with a public default). |
+| `NODE_ENV` | Remove it from `.env`. Next.js sets it itself. |
+| `ALLOW_DEMO_SEED` | No longer used (the demo seed was removed); delete it. |
+| Clerk keys, `ARCJET_KEY` | No longer used; can be deleted. |
+| Duplicate `INNGEST_*` lines | Keep one pair (the production keys). |
+| `NEXT_PUBLIC_APP_URL`, `EMAIL_FROM`, `GEMINI_MODEL` | Optional (see `.env.example`). |
+
+If `.env` has ever been shared or committed, rotate the database password, Resend, Gemini and Inngest keys.
+
+## 1. Back up
+
+```bash
+pg_dump "$DIRECT_URL" --format=custom --no-owner --file=springer-backup-$(date +%F).dump
+```
+(or create a backup from the Supabase dashboard).
+
+## 2. Check the live schema matches the baseline
+
+`prisma/migrations/0_baseline` is the schema the live database was built with (`db push`). Confirm it:
+
+```bash
+npx prisma migrate diff \
+  --from-url "$DIRECT_URL" \
+  --to-schema-datamodel docs/migration/baseline-schema.prisma \
+  --script
+```
+
+Expected output: an empty migration (`-- This is an empty migration.`). If it prints SQL, the live database has
+drifted — stop and review those differences before continuing.
+
+## 3. Mark the baseline as already applied (once)
+
+```bash
+npx prisma migrate resolve --applied 0_baseline
+npx prisma migrate status
+```
+
+If status mentions the old `20251115144259_craete_models` migration (it was removed from the folder because it
+never matched the live schema), you can delete that row:
+`DELETE FROM "_prisma_migrations" WHERE migration_name = '20251115144259_craete_models';`
+
+## 4. Rehearse on a copy
+
+```bash
+createdb springer_rehearsal
+pg_restore --no-owner -d springer_rehearsal springer-backup-*.dump
+DATABASE_URL=postgresql://.../springer_rehearsal DIRECT_URL=postgresql://.../springer_rehearsal npx prisma migrate deploy
+DATABASE_URL=postgresql://.../springer_rehearsal JWT_SECRET=... npm run build && npm start
+```
+Log in as the Boss and open the overview, a department's Menu & Stock, Today's report and Statements for existing data.
+
+## 5. Migrate production
+
+```bash
+npx prisma migrate deploy
+```
+
+Seven migrations run, in order:
+
+1. `20260926090000_restaurant_foundation`: new enum values, columns and tables (accounting periods,
+   attachments, void/idempotency fields, handover status, organization time zone …). Additive only.
+2. `20260926090100_backfill_restaurant_ledger`: idempotent data backfill (department memberships, legacy
+   `INCOME`/`EXPENSE` rows re-typed, legacy credit sales get a Debt record, sale line net amounts).
+3. `20261001090000_restaurant_v2`: the v2 schema: reference numbers (`referenceNo`, `DocumentSequence`),
+   debtors, notifications, department code / opening cash float / cashier discount limit, dish section,
+   low-stock level and sort order, signed stock movement types. Removes the personal-finance `Budget` table
+   and the recurring-transaction columns.
+4. `20261001090100_restaurant_v2_backfill`: idempotent: recipe dishes become plate dishes, department codes,
+   debtors created from existing debts, old debts without a sale marked "opening balance", reference numbers
+   assigned to every existing record and counters initialised.
+5. `20261003090000_cash_requests`: additive: the Boss's cash requests (`cash_requests`) and the link from a handover
+   to the request it answers.
+6. `20261004090000_department_head`: additive: the head of each department (`departments.headUserId`), backfilled
+   from the first active manager of each department.
+7. `20261005090000_two_roles`: two roles only. Every account except the Boss becomes a department head (`HEAD`) of
+   the departments it is assigned to; its old role becomes its title (Manager, Accountant, Cashier), which the Boss
+   can edit in People. Removes per-department role overrides and the column added by migration 6.
+
+Then deploy the application code.
+
+## 6. After deploying
+
+- Everyone signs in again (new `JWT_SECRET`).
+- **Departments** (*Boss → Departments*): check each department's type (existing ones default to Restaurant),
+  its opening cash float and the cashier discount limit.
+- **People** (*Boss → People*): check each person's departments and role.
+- **Opening stock:** dishes that used recipes are now counted in plates. On the first day, each head opens
+  *Menu & Stock* and uses **Edit opening stock** to enter the plates really available.
+- **Debts:** review the debtors list and the debts marked "opening balance".
+- Stop using `prisma db push`. Schema changes are `npx prisma migrate dev --name <change>` locally, then
+  `npx prisma migrate deploy` in production.
+
+## Rollback
+
+Migrations 1 and 3 change the schema (3 drops `Budget` and the recurring columns); 2 and 4 change data. To roll back, restore the
+backup from step 1 and redeploy the previous code.
+
+## Vercel
+
+Vercel builds with `npm install` (which runs `prisma generate`) and `npm run build`. It never touches the database:
+run `npx prisma migrate deploy` against Supabase **before** pushing code that needs a new migration.
+
+Environment variables (Project → Settings → Environment Variables, Production and Preview):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Supabase **transaction pooler** (port 6543) with `?pgbouncer=true&connection_limit=1` (serverless functions) |
+| `DIRECT_URL` | Supabase session pooler or direct connection (port 5432); used by migrations |
+| `JWT_SECRET` | the same ≥ 32-character secret as in your `.env` (**required**: without it every page fails in production) |
+| `NEXT_PUBLIC_APP_URL` | your Vercel address, e.g. `https://your-app.vercel.app` (links in e-mails) |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | AI insights (optional) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | e-mails (optional) |
+| `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | scheduled jobs |
+| Clerk keys, `ARCJET_KEY`, `NODE_ENV` | remove: no longer used / set by Vercel |
+
+After the first deployment, open the Inngest dashboard → Apps → **Sync** (or re-sync `https://<your-app>/api/inngest`) so
+it picks up the three scheduled jobs of this version (missing-report reminder, monthly statement, stock check) and drops
+the old ones.
+
+Limits: Vercel refuses request bodies above 4.5 MB, so proof uploads are limited to 4 MB.

@@ -1,21 +1,14 @@
-import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import React from "react";
+import { Button } from "@/components/ui/button";
 
-const NotFound = () => {
+export default function NotFound() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100vh] px-4 text-center">
-      <h1 className="text-6xl font-bold gradient-title mb-4">404</h1>
-      <h2 className="text-2xl font-semibold mb-4">Page Not Found</h2>
-      <p className="text-gray-600 mb-8">
-        Oops! The page you&apos;re looking for doesn&apos;t exist or has been
-        moved.
-      </p>
-      <Link href="/">
-        <Button>return Home</Button>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
+      <h1 className="text-5xl font-bold">404</h1>
+      <p className="mt-3 text-slate-600">This page does not exist or you do not have access to it.</p>
+      <Link href="/home" className="mt-6">
+        <Button>Back to the app</Button>
       </Link>
     </div>
   );
-};
-
-export default NotFound;
+}
