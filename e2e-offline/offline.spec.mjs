@@ -124,14 +124,17 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   await toast(page, '"Rice" added to the menu.');
   await expect(page.getByTestId("dish-row-Rice")).toContainText("10 000");
   await expect(page.getByTestId("sync-status")).toHaveAttribute("data-state", "ok");
-  // Open the pages once (they are also saved in the background): Sell, Money, Menu & Stock.
-  for (const p of ["sell", "money", "menu-stock"]) {
-    await page.goto(`/d/${deptId}/${p}`);
-    await page.waitForLoadState("networkidle");
-  }
+  // Every page of the department is saved in the background, without opening them: the sync
+  // panel says when they are all ready.
+  await page.getByTestId("sync-status").click();
+  const saved = page.getByTestId("offline-pages");
+  await expect(saved).toContainText("Every page of your departments opens on this computer", { timeout: 60_000 });
+  await expect(saved).toContainText(/ready without internet: (\d+) of \1/);
+  await page.keyboard.press("Escape");
 
-  // ── The connection is gone ──
+  // ── The connection is gone (Wi-Fi off: the browser knows, and the server is unreachable) ──
   await stopServer();
+  await page.context().setOffline(true);
   await page.goto(`/d/${deptId}/sell`); // served by the service worker
   await expect(page.getByRole("heading", { name: "Sell" })).toBeVisible();
   await expect(page.getByTestId("offline-banner")).toBeVisible();
@@ -165,8 +168,17 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   await expect(page.getByTestId("sync-status")).toContainText("3 waiting");
   await expect(page.getByRole("button", { name: "Add Rice" })).toContainText("7 left");
 
+  // Every page opens from the menu while offline, including pages never visited.
+  const nav = page.getByRole("navigation", { name: "Main navigation" }).first();
+  for (const [link, heading] of [["Debts", "Debts"], ["Cash to Boss", "Cash to Boss"], ["Today's report", "Today's report"], ["History", "History"], ["Home", "Department 1"], ["Menu & Stock", "Menu & Stock"]]) {
+    await nav.getByRole("link", { name: link, exact: true }).click();
+    await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+    await expect(page.getByTestId("offline-banner")).toBeVisible();
+  }
+  await expect(page.getByTestId("dish-row-Rice")).toContainText("7 000"); // the plates sold offline
+
   // Money: record an expense offline; it is in the day's figures at once.
-  await page.goto(`/d/${deptId}/money`);
+  await nav.getByRole("link", { name: "Money in / out" }).click();
   await expect(page.getByRole("heading", { name: "Money in / out" })).toBeVisible();
   await page.getByRole("button", { name: "Record EXPENSE" }).click();
   const m = page.getByRole("dialog");
@@ -190,13 +202,16 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   await page.goto(`/d/${deptId}/history?from=2020-01-01`);
   await expect(page.getByText("This page is not saved on this computer yet")).toBeVisible();
 
-  // ── The connection is back: everything is sent, in order, once ──
-  await startServer();
+  // ── The connection is back: everything is sent, in order, once, and the page refreshes itself ──
   await page.goto(`/d/${deptId}/menu-stock`);
-  await expect(page.getByTestId("sync-status")).toHaveAttribute("data-state", "ok", { timeout: 90_000 });
-  await page.reload();
+  await expect(page.getByTestId("dish-row-Rice")).toContainText("not sent yet");
+  await startServer();
+  await page.context().setOffline(false);
+  await toast(page, "Back online: 4 record(s) sent.");
+  await expect(page.getByTestId("sync-status")).toHaveAttribute("data-state", "ok");
+  await expect(page.getByTestId("offline-banner")).toHaveCount(0);
+  await expect(page.getByTestId("dish-row-Rice")).not.toContainText("not sent yet"); // server figures, no reload
   await expect(page.getByTestId("dish-row-Rice")).toContainText("7 000");
-  await expect(page.getByTestId("dish-row-Rice")).not.toContainText("not sent yet");
   await page.goto(`/d/${deptId}/sell`);
   await expect(page.locator("tr", { hasText: "S-0001" })).toContainText("3 × Rice");
   await expect(page.locator("tr", { hasText: "S-0002" })).toContainText("Undone");

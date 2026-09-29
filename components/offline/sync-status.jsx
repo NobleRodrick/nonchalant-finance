@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, CloudOff, Loader2, RefreshCw, Trash2, UploadCloud, WifiOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CloudOff, Download, Loader2, RefreshCw, Trash2, UploadCloud, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useOutboxOps, useSyncState } from "@/lib/offline/react";
+import { useOfflinePages, useOutboxOps, useSyncState } from "@/lib/offline/react";
 import { removeOperation, updateOperation } from "@/lib/offline/outbox";
 import { syncEngine } from "@/lib/offline/sync-engine";
 import { STATUS } from "@/lib/offline/status";
@@ -39,6 +39,45 @@ function OpRow({ op, children }) {
         {children ? <div className="flex shrink-0 gap-1">{children}</div> : null}
       </div>
     </li>
+  );
+}
+
+const PAGE_NAMES = { "": "Department home", sell: "Sell", "menu-stock": "Menu & Stock", money: "Money in / out", debts: "Debts", "cash-handover": "Cash to Boss", report: "Today's report", history: "History" };
+
+/** A readable name for a saved page path. */
+function pageName(path) {
+  const parts = path.split("?")[0].split("/").filter(Boolean);
+  if (parts[0] === "d") return PAGE_NAMES[parts[2] || ""] || parts[2];
+  if (parts[0] === "boss") return parts[1] ? `Boss · ${parts[1].replace(/-/g, " ")}` : "Boss · overview";
+  return parts.join(" / ").replace(/-/g, " ") || "Home";
+}
+
+/** Which pages open without internet on this computer, and saving them now. */
+function SavedPages({ online }) {
+  const pages = useOfflinePages();
+  if (!pages.enabled || !pages.total) return null;
+  const complete = pages.ready === pages.total;
+  return (
+    <section className="space-y-2 rounded-lg border border-slate-200 p-3" data-testid="offline-pages">
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 text-sm font-medium text-slate-800">
+          {complete ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Download className="h-4 w-4 text-amber-600" />}
+          Pages ready without internet: {pages.ready} of {pages.total}
+        </span>
+        {!complete ? (
+          <Button size="sm" variant="outline" disabled={!online || pages.saving} onClick={pages.saveNow}>
+            {pages.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save them now
+          </Button>
+        ) : null}
+      </div>
+      {!complete ? (
+        <p className="text-xs text-slate-500">
+          Not saved yet: {pages.missing.map(pageName).join(", ")}. {online ? "They are being saved; this takes a few seconds." : "They are saved as soon as the connection is back."}
+        </p>
+      ) : (
+        <p className="text-xs text-slate-500">Every page of your departments opens on this computer, with or without internet.</p>
+      )}
+    </section>
   );
 }
 
@@ -117,6 +156,7 @@ export function SyncStatus() {
               {state.lastSyncAt ? ` Last sent at ${when(state.lastSyncAt)}.` : ""}
             </DialogDescription>
           </DialogHeader>
+          <SavedPages online={state.online} />
           {state.authRequired && n ? (
             <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-900">Your session has ended. Sign in again on this computer to send the records below: nothing is lost.</p>
           ) : null}

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { logoutUser } from "@/actions/auth";
 import { markNotificationsRead } from "@/actions/notifications";
 import { cn } from "@/lib/utils";
+import { navigateTo } from "@/lib/navigation";
 import { NavigationProgress, startNavigationProgress } from "./navigation-progress";
 import { OfflineProvider, postToServiceWorker } from "@/components/offline/offline-provider";
 import { OfflineBanner, SyncStatus } from "@/components/offline/sync-status";
@@ -94,7 +95,7 @@ function DepartmentCard({ department, departments }) {
             {i > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuLabel className="text-xs text-slate-500">{label}</DropdownMenuLabel>
             {list.map((d) => (
-              <DropdownMenuItem key={d.id} onClick={() => { startNavigationProgress(); router.push(`/d/${d.id}`); }} className="flex items-center justify-between">
+              <DropdownMenuItem key={d.id} onClick={() => { startNavigationProgress(); navigateTo(router, `/d/${d.id}`); }} className="flex items-center justify-between">
                 <span className="truncate">{d.name}</span>
                 {d.id === department.id ? <Check className="h-4 w-4" /> : null}
               </DropdownMenuItem>
@@ -115,7 +116,7 @@ function Notifications({ data: server }) {
   const data = { items, unread: allRead ? 0 : Math.max(0, server.unread - server.items.filter((n) => !n.read && readIds.has(n.id)).length) };
   const open = (n) => {
     startNavigationProgress();
-    router.push(n.href);
+    navigateTo(router, n.href);
     if (!n.read) {
       setReadIds((s) => new Set([...s, n.id]));
       markNotificationsRead({ id: n.id }).catch(() => {});

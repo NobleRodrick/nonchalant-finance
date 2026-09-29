@@ -14,6 +14,7 @@ import { overlayDayStatus, overlayStock } from "@/lib/offline/overlay";
 import { dishActiveSpec } from "@/lib/offline/specs";
 import { AddDishDialog, AddStockDialog, CorrectCountDialog, DishHistoryDialog, EditDishDialog, OpeningStockDialog } from "./menu-stock-dialogs";
 import { cn } from "@/lib/utils";
+import { navigateTo } from "@/lib/navigation";
 
 /**
  * Menu & Stock: the list of dishes (the menu) and the plates of each (the stock) on one page.
@@ -43,7 +44,7 @@ export function MenuStockBoard({ departmentId, departmentName, dateKey, dateLabe
     const next = new URLSearchParams(search.toString());
     if (showRemoved) next.delete("removed");
     else next.set("removed", "1");
-    router.push(`${pathname}${next.toString() ? `?${next}` : ""}`);
+    navigateTo(router, `${pathname}${next.toString() ? `?${next}` : ""}`);
   };
   const remove = (r) => record(dishActiveSpec({ departmentId, dishId: r.dishId, name: r.name, active: false }), { success: `"${r.name}" removed from the menu.` });
   const restore = (r) => record(dishActiveSpec({ departmentId, dishId: r.dishId, name: r.name, active: true }), { success: `"${r.name}" is back on the menu.` });

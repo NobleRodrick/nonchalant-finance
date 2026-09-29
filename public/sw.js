@@ -10,10 +10,10 @@
  * The pages cache holds the signed-in person's data: it is emptied at sign-out and when another
  * person signs in on this computer ("purge-pages").
  */
-const VERSION = "1";
+const VERSION = "2"; // v2: code files cached under one key (see staticKey)
 const STATIC_CACHE = `sf-static-v${VERSION}`;
 const ASSETS_CACHE = `sf-assets-v${VERSION}`;
-const PAGES_CACHE = "sf-pages-v1";
+const PAGES_CACHE = `sf-pages-v${VERSION}`; // a new version saves the pages (and their code) again
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/logo.jpg"];
 const NAV_TIMEOUT_MS = 12000;
@@ -104,13 +104,29 @@ async function handleNavigation(event) {
   }
 }
 
+/**
+ * One cache key per code file, however its URL is written: the router asks for
+ * ".../%5BdeptId%5D/..." while the page's data names ".../[deptId]/...".
+ */
+function staticKey(url) {
+  const u = new URL(url, self.location.origin);
+  let path = u.pathname;
+  try {
+    path = decodeURI(path);
+  } catch {
+    // keep as is
+  }
+  return `${u.origin}${path}${u.search}`;
+}
+
 async function handleStatic(request) {
   const cache = await caches.open(STATIC_CACHE);
-  const hit = await cache.match(request);
+  const key = staticKey(request.url);
+  const hit = await cache.match(key);
   if (hit) return hit;
   const response = await fetch(request);
   if (response.ok) {
-    cache.put(request, response.clone());
+    cache.put(key, response.clone());
     trim(STATIC_CACHE, MAX_STATIC);
   }
   return response;
@@ -157,6 +173,22 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
+/**
+ * The code a page needs: script and style tags (/_next/static/…) and the chunks the router loads
+ * later, which the page's embedded data names relative to /_next/ ("static/chunks/…").
+ */
+function assetsOf(html) {
+  // Route groups put parentheses in chunk paths ("app/(main)/…"): they are part of the name.
+  const found = html.match(/(?:\/_next\/)?static\/(?:chunks|css|media)\/[^"'\\\s<>]+/g) || [];
+  return [...new Set(found.map((a) => (a.startsWith("/_next/") ? a : `/_next/${a}`)))];
+}
+
+/** Fonts and images a style sheet needs (url(...) inside it). */
+function assetsOfCss(css) {
+  const found = [...css.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)].map((m) => m[1]);
+  return found.filter((u) => u.startsWith("/_next/static/"));
+}
+
 /** Fetches pages (and their code) now, so they open offline later. */
 async function warm(urls) {
   const staticCache = await caches.open(STATIC_CACHE);
@@ -168,13 +200,15 @@ async function warm(urls) {
       const html = await response.clone().text();
       await storePage(new URL(url, self.location.origin).toString(), response);
       // Code the page needs (script and style files, fonts), including the router's lazy chunks.
-      const assets = html.match(/\/_next\/static\/[^"'\\\s)]+/g) || [];
+      const assets = assetsOf(html);
       for (const a of assets) {
         if (seen.has(a)) continue;
         seen.add(a);
-        if (await staticCache.match(a)) continue;
+        if (await staticCache.match(staticKey(a))) continue;
         const r = await fetch(a).catch(() => null);
-        if (r && r.ok) await staticCache.put(a, r);
+        if (!r || !r.ok) continue;
+        if (a.includes("/static/css/")) assets.push(...assetsOfCss(await r.clone().text()).filter((u) => !seen.has(u)));
+        await staticCache.put(staticKey(a), r);
       }
     } catch {
       // offline or refused: try again at the next warm
@@ -183,10 +217,37 @@ async function warm(urls) {
   trim(STATIC_CACHE, MAX_STATIC);
 }
 
+let warming = null;
+
+/** Tells every open page of the app something (e.g. pages were saved). */
+async function broadcast(message) {
+  const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const c of all) c.postMessage(message);
+}
+
+/** Paths (with query) of the saved pages. */
+async function savedPages() {
+  const cache = await caches.open(PAGES_CACHE);
+  return (await cache.keys()).map((r) => {
+    const u = new URL(r.url);
+    return `${u.pathname}${u.search}`;
+  });
+}
+
 self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "warm" && Array.isArray(data.urls)) {
-    event.waitUntil(warm(data.urls));
+    // One saving round at a time; a request during a round starts another one after it.
+    const run = (warming || Promise.resolve()).catch(() => {}).then(() => warm(data.urls)).then(async () => broadcast({ type: "warm-done", pages: await savedPages() }));
+    warming = run;
+    run
+      .finally(() => {
+        if (warming === run) warming = null;
+      })
+      .catch(() => {});
+    event.waitUntil(run);
+  } else if (data.type === "saved-pages") {
+    event.waitUntil(savedPages().then((pages) => event.ports[0]?.postMessage({ pages })));
   } else if (data.type === "purge-pages") {
     event.waitUntil(caches.delete(PAGES_CACHE));
   } else if (data.type === "skip-waiting") {

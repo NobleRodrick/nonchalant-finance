@@ -54,6 +54,7 @@ async function visitAll(page, paths, { axe = false, shots = "" } = {}) {
 }
 
 test("setup: owner, departments, two department heads (one heads two departments) and some records", async ({ page }) => {
+  test.setTimeout(300_000); // the first test of a run also waits for the development server to compile the pages
   await page.goto("/register");
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Full name").fill("Smoke Owner");

@@ -1,34 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { OfflineContext } from "@/lib/offline/react";
-import { getMeta, loadOutbox, setMeta } from "@/lib/offline/outbox";
+import { toast } from "sonner";
+import { OfflineContext, OfflinePagesContext } from "@/lib/offline/react";
+import { getMeta, getSnapshot, loadOutbox, setMeta } from "@/lib/offline/outbox";
 import { syncEngine } from "@/lib/offline/sync-engine";
-import { checkConnectivity, isOnline } from "@/lib/offline/connectivity";
+import { checkConnectivity, isOnline, subscribeConnectivity } from "@/lib/offline/connectivity";
+import { STATUS } from "@/lib/offline/status";
+import { onServiceWorkerMessage, postToServiceWorker, registerServiceWorker, savedPages, savePages } from "@/lib/offline/service-worker";
+import { OfflineNavigation } from "./offline-navigation";
 
-const SW_ENABLED = process.env.NODE_ENV === "production" || process.env.NEXT_PUBLIC_ENABLE_SW === "1";
-const WARM_EVERY_MS = 10 * 60 * 1000;
+export { postToServiceWorker };
 
-/** Tells the service worker something (no-op without one). */
-export async function postToServiceWorker(message) {
-  if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
-  const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
-  (reg?.active || navigator.serviceWorker.controller)?.postMessage(message);
-}
-
-async function registerServiceWorker() {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
-  if (!SW_ENABLED) {
-    // Development: never keep an old worker around (it would serve stale code).
-    const regs = await navigator.serviceWorker.getRegistrations().catch(() => []);
-    await Promise.all(regs.map((r) => r.unregister()));
-    return false;
-  }
-  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  await navigator.serviceWorker.ready;
-  return true;
-}
+const RESAVE_EVERY_MS = 10 * 60 * 1000;
+const RESAVE_AFTER_SEND_MS = 20000;
 
 /**
  * Sends a proof file saved on this device; returns its id. A refused file throws (the record is
@@ -47,58 +33,103 @@ async function uploadFile(file, departmentId) {
   throw error;
 }
 
-function warmedRecently(key) {
-  try {
-    const at = Number(sessionStorage.getItem(`sf-warm:${key}`) || 0);
-    return Date.now() - at < WARM_EVERY_MS;
-  } catch {
-    return false;
-  }
-}
-
-function markWarmed(key) {
-  try {
-    sessionStorage.setItem(`sf-warm:${key}`, String(Date.now()));
-  } catch {
-    // storage unavailable: warm again next time
-  }
+/** Refreshes the page's server figures soon (grouped: several triggers, one refresh). */
+function useRefreshSoon() {
+  const router = useRouter();
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      if (document.visibilityState === "visible" && isOnline()) router.refresh();
+    }, 300);
+  }, [router]);
 }
 
 /**
- * Offline support for the signed-in app:
- *  - opens this person's outbox and starts sending it (lib/offline/sync-engine);
- *  - registers the service worker and keeps the pages of the person's departments saved so they
- *    open without a connection (`warmUrls`);
- *  - refreshes the page when records reach the server, so the figures come from the server again;
- *  - when another person signs in on this computer, removes the previous person's saved pages.
+ * The pages of this person saved on this computer (service worker): saves them as soon as the
+ * worker runs, when some are missing, every 10 minutes, after records were sent and when the
+ * connection comes back. Returns what the sync panel shows.
  */
-export function OfflineProvider({ userId, userName, timeZone, warmUrls = [], children }) {
-  const router = useRouter();
-  const refreshTimer = useRef(null);
-  const warmTimer = useRef(null);
-  const swReady = useRef(false);
-  const context = useMemo(() => ({ userId, userName, timeZone, enabled: true }), [userId, userName, timeZone]);
-  const warmKey = warmUrls.join("|");
+function useSavedPages(urls) {
+  const key = urls.join("|");
+  const [enabled, setEnabled] = useState(false);
+  const [saved, setSaved] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const lastSave = useRef(0);
+  const resaveTimer = useRef(null);
 
+  const saveNow = useCallback(() => {
+    if (!enabled || !isOnline() || !urls.length) return;
+    lastSave.current = Date.now();
+    setSaving(true);
+    savePages(urls);
+    // urls is represented by key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, key]);
+
+  // Register the worker, then follow what it saved.
+  useEffect(() => {
+    let alive = true;
+    registerServiceWorker()
+      .then((ok) => alive && setEnabled(ok))
+      .catch(() => {});
+    const off = onServiceWorkerMessage((msg) => {
+      if (msg.type === "warm-done") {
+        setSaving(false);
+        if (Array.isArray(msg.pages)) setSaved(msg.pages);
+      }
+    });
+    return () => {
+      alive = false;
+      off();
+    };
+  }, []);
+
+  // First save as soon as possible (pages missing), then every 10 minutes while the app is open.
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    savedPages().then((pages) => {
+      if (!alive) return;
+      setSaved(pages);
+      if (urls.some((u) => !pages.includes(u))) saveNow();
+    });
+    const every = setInterval(() => Date.now() - lastSave.current >= RESAVE_EVERY_MS && saveNow(), 60000);
+    return () => {
+      alive = false;
+      clearInterval(every);
+    };
+    // urls is represented by key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, key, saveNow]);
+
+  useEffect(() => () => clearTimeout(resaveTimer.current), []);
+  const saveSoon = useCallback(() => {
+    clearTimeout(resaveTimer.current);
+    resaveTimer.current = setTimeout(saveNow, RESAVE_AFTER_SEND_MS);
+  }, [saveNow]);
+
+  const pages = useMemo(() => {
+    const missing = urls.filter((u) => !saved.includes(u));
+    return { enabled, total: urls.length, ready: urls.length - missing.length, missing, saving, saveNow };
+    // urls is represented by key
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, key, saved, saving, saveNow]);
+  return { pages, saveNow, saveSoon };
+}
+
+/** This person's outbox and the sync engine (sending, refresh after sending). */
+function useOutbox(userId, { onSent }) {
+  const onSentRef = useRef(onSent);
+  useEffect(() => {
+    onSentRef.current = onSent;
+  }, [onSent]);
   useEffect(() => {
     let cancelled = false;
-    const warm = (force = false) => {
-      if (!swReady.current || !isOnline() || !warmUrls.length) return;
-      if (!force && warmedRecently(warmKey)) return;
-      markWarmed(warmKey);
-      postToServiceWorker({ type: "warm", urls: warmUrls });
-    };
-    const onApplied = () => {
-      clearTimeout(refreshTimer.current);
-      refreshTimer.current = setTimeout(() => {
-        if (document.visibilityState === "visible" && isOnline()) router.refresh();
-      }, 300);
-      // The saved copies of the pages should include what was just sent.
-      clearTimeout(warmTimer.current);
-      warmTimer.current = setTimeout(() => warm(true), 20000);
-    };
     (async () => {
       try {
+        // Another person signs in on this computer: the previous person's saved pages go.
         const last = await getMeta("lastUserId");
         if (last && last !== userId) await postToServiceWorker({ type: "purge-pages" });
         await setMeta("lastUserId", userId);
@@ -108,19 +139,68 @@ export function OfflineProvider({ userId, userName, timeZone, warmUrls = [], chi
         await loadOutbox(userId).catch(() => {});
       }
       if (cancelled) return;
-      syncEngine?.start({ userId, upload: uploadFile, onApplied });
+      syncEngine?.start({ userId, upload: uploadFile, onApplied: (ops) => onSentRef.current?.(ops) });
       checkConnectivity();
-      swReady.current = await registerServiceWorker().catch(() => false);
-      if (!cancelled) warm();
     })();
     return () => {
       cancelled = true;
-      clearTimeout(refreshTimer.current);
-      clearTimeout(warmTimer.current);
     };
-    // warmUrls is represented by warmKey
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, warmKey, router]);
+  }, [userId]);
+}
 
-  return <OfflineContext.Provider value={context}>{children}</OfflineContext.Provider>;
+/**
+ * When the connection comes back: send what waits, save the pages again, refresh the figures,
+ * and say so.
+ */
+function useReconnect({ userId, onBack }) {
+  const onBackRef = useRef(onBack);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
+  useEffect(
+    () =>
+      subscribeConnectivity(async (online) => {
+        if (!online || !syncEngine) return;
+        const waiting = getSnapshot().filter((op) => op.userId === userId && (op.status === STATUS.PENDING || op.status === STATUS.SENDING)).map((op) => op.key);
+        await syncEngine.flush();
+        const sent = getSnapshot().filter((op) => waiting.includes(op.key) && op.status === STATUS.APPLIED).length;
+        const refused = getSnapshot().filter((op) => waiting.includes(op.key) && op.status === STATUS.REJECTED).length;
+        onBackRef.current?.();
+        if (!waiting.length) toast.success("Back online.");
+        else if (refused) toast.warning(`Back online: ${sent} record(s) sent, ${refused} need attention (see the top bar).`);
+        else if (sent) toast.success(`Back online: ${sent} record(s) sent.`);
+        else toast.info("Back online. Sending what was recorded…");
+      }),
+    [userId]
+  );
+}
+
+/**
+ * Offline support for the signed-in app: the outbox and its sending, the pages saved for offline
+ * use, links that keep working without a connection, and the automatic refresh when the
+ * connection comes back (see docs/OFFLINE_AND_PERFORMANCE.md).
+ */
+export function OfflineProvider({ userId, userName, timeZone, warmUrls = [], children }) {
+  const refreshSoon = useRefreshSoon();
+  const { pages, saveNow, saveSoon } = useSavedPages(warmUrls);
+  const onSent = useCallback(() => {
+    refreshSoon();
+    saveSoon(); // the saved copies should include what was just sent
+  }, [refreshSoon, saveSoon]);
+  const onBack = useCallback(() => {
+    refreshSoon();
+    saveNow();
+  }, [refreshSoon, saveNow]);
+  useOutbox(userId, { onSent });
+  useReconnect({ userId, onBack });
+
+  const context = useMemo(() => ({ userId, userName, timeZone, enabled: true }), [userId, userName, timeZone]);
+  return (
+    <OfflineContext.Provider value={context}>
+      <OfflinePagesContext.Provider value={pages}>
+        <OfflineNavigation />
+        {children}
+      </OfflinePagesContext.Provider>
+    </OfflineContext.Provider>
+  );
 }

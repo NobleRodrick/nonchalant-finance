@@ -10,6 +10,7 @@ import { MoneyBars, HBars } from "@/components/charts/money-bars";
 import { AiInsights } from "@/components/reports/ai-insights";
 import { formatAmount, formatPct, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { navigateTo } from "@/lib/navigation";
 
 const PRESETS = [
   { id: "today", label: "Today" },
@@ -58,7 +59,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
   const go = (patch) => {
     const p = new URLSearchParams(search.toString());
     Object.entries(patch).forEach(([k, v]) => (v === null || v === undefined || v === "" ? p.delete(k) : p.set(k, v)));
-    router.push(`${pathname}?${p}`);
+    navigateTo(router, `${pathname}?${p}`);
   };
   const { income, cash, stock, debts, coverage } = statement;
   const cmp = income.previous;

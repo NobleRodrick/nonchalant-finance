@@ -4,6 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { ChevronLeft, ChevronRight, CalendarDays, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { navigateTo } from "@/lib/navigation";
 
 function shift(key, days) {
   const [y, m, d] = key.split("-").map(Number);
@@ -21,7 +22,7 @@ export function DateNav({ dateKey, todayKey, param = "date", allowFuture = false
     const next = new URLSearchParams(search.toString());
     if (key === todayKey) next.delete(param);
     else next.set(param, key);
-    start(() => router.push(`${pathname}${next.toString() ? `?${next}` : ""}`));
+    start(() => navigateTo(router, `${pathname}${next.toString() ? `?${next}` : ""}`));
   };
 
   return (

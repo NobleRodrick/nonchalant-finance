@@ -31,7 +31,7 @@
     <script>
       (async function () {
         try {
-          const cache = await caches.open("sf-pages-v1");
+          const cache = await caches.open("sf-pages-v2");
           const keys = await cache.keys();
           const names = { "": "Department home", sell: "Sell", "menu-stock": "Menu & Stock", money: "Money in / out", debts: "Debts", "cash-handover": "Cash to Boss", report: "Today's report", history: "History" };
           const list = document.getElementById("pages");

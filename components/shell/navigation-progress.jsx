@@ -2,23 +2,13 @@
 
 import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+import { internalNavigationTarget } from "@/lib/navigation";
 
 const START_EVENT = "sf:navigation-start";
 
 /** Call before a programmatic router.push() so the bar shows at once. */
 export function startNavigationProgress() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(START_EVENT));
-}
-
-function isInternalNavigation(event) {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return false;
-  const a = event.target instanceof Element ? event.target.closest("a[href]") : null;
-  if (!a || a.target === "_blank" || a.hasAttribute("download")) return false;
-  const url = new URL(a.href, window.location.href);
-  if (url.origin !== window.location.origin) return false;
-  const here = window.location;
-  if (url.pathname === here.pathname && url.search === here.search) return false; // same page or a #hash
-  return true;
 }
 
 function Bar() {
@@ -42,7 +32,7 @@ function Bar() {
       safety.current = setTimeout(() => setFrom(null), 15000); // never stuck
     };
     const onClick = (e) => {
-      if (isInternalNavigation(e)) start();
+      if (internalNavigationTarget(e)) start();
     };
     document.addEventListener("click", onClick, true);
     window.addEventListener(START_EVENT, start);

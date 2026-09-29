@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Field, Money, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
+import { navigateTo } from "@/lib/navigation";
 
 export function DailyReportsList({ departments, filters, todayKey, rows }) {
   const router = useRouter();
@@ -13,7 +14,7 @@ export function DailyReportsList({ departments, filters, todayKey, rows }) {
   const [f, setF] = useState(filters);
   const apply = (e) => {
     e?.preventDefault();
-    router.push(`${pathname}?${new URLSearchParams(Object.entries(f).filter(([, v]) => v))}`);
+    navigateTo(router, `${pathname}?${new URLSearchParams(Object.entries(f).filter(([, v]) => v))}`);
   };
   const exportCsv = () => {
     const head = ["Date", "Department", "Ref", "Status", "Version", "Sent by", "Money in", "Money out", "Result", "Cash expected", "Handed over", "Variance", "Stock value", "Debts owed"];

@@ -12,6 +12,7 @@ import { countOf, formatMoney } from "@/lib/format";
 import { getRecordDetail } from "@/actions/history";
 import { toDateKey } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
+import { navigateTo } from "@/lib/navigation";
 
 const METHOD = { CASH: "Cash", MOMO: "Mobile Money", BANK_TRANSFER: "Bank", CREDIT: "On credit" };
 const ACTION_LABELS = {
@@ -170,7 +171,7 @@ export function HistoryBoard({ departmentId, filters, rangeLabel, types, people,
   const [target, setTarget] = useState(null);
   const apply = (next = f) => {
     const p = new URLSearchParams(Object.entries(next).filter(([, v]) => v && v !== "ALL"));
-    router.push(`${pathname}?${p}`);
+    navigateTo(router, `${pathname}?${p}`);
   };
   return (
     <div className="space-y-4">

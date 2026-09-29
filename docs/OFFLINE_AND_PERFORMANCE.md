@@ -41,8 +41,10 @@ The **Boss** can read every page he opened, and approve / return reports, confir
 cancel cash requests offline (sent when the connection is back). Managing people, departments and settings needs
 the internet.
 
-Needs the internet: signing in, pages never opened on this computer (a page explains it), a record's detail in
-History and a dish's history, statements' AI insights.
+Every page of the head's departments is saved on the computer in the background after sign-in (the sync panel shows
+"Pages ready without internet"), so they all open offline even if never visited. Needs the internet: signing in,
+pages outside the head's departments or with filters (another day, a History search: a page explains it), a record's
+detail in History and a dish's history, statements' AI insights.
 
 ---
 
@@ -96,24 +98,45 @@ A record counts on top of the server's figures while it is waiting, or when the 
 rendered (`renderedAt`, server clock, from `departmentPage`). A refused record is never counted: it is listed under
 **Needs attention** with the reason (Try again / Discard).
 
-### The service worker — `public/sw.js`
+### The service worker — `public/sw.js` (page side: `lib/offline/service-worker.js`)
 
-- Pages: network first, the last copy of every page opened is kept (and the head's department pages are saved in
-  the background after sign-in and after records are sent: `warm`), so they open without a connection. A page never
-  opened here shows `public/offline.html`. Slow network (> 12 s): the saved copy is shown and the fresh one kept.
-- App code (`/_next/static`): cache first (file names change with every deployment).
-- Router data requests: network only; when they fail the router loads the page itself (served by the rule above).
-- Writes never go through the service worker.
-- The saved pages are the signed-in person's data: they are deleted at sign-out and when another person signs in on
-  the computer. Records not sent yet stay (they belong to their author and are sent at his next sign-in); signing
-  out with records waiting asks first.
-- Registered in production builds only (`NEXT_PUBLIC_ENABLE_SW=1` enables it in development).
+- **Pages are saved in advance**, not only when opened: as soon as the worker runs after sign-in, whenever some
+  are missing, every 10 minutes, 20 s after records were sent and when the connection comes back, the worker
+  fetches every page of the person's departments (`warmUrls`, from the app shell) and keeps them.
+- **With their code**: each saved page's script and style files, the chunks the router loads later (named in the
+  page's data as `static/chunks/…`, including route groups such as `app/(main)/…`) and the fonts of its style sheets.
+  Code files are kept under one key however their URL is written (`%5BdeptId%5D` or `[deptId]`).
+- Pages: network first (the last copy is kept); a slow network (> 12 s) gets the saved copy. A page never saved shows
+  `public/offline.html`, which lists the pages that are.
+- App code (`/_next/static`): cache first (file names change with every deployment). Router data requests: network
+  only. Writes never go through the worker.
+- `VERSION` in `sw.js`: a new version starts with empty caches, so the pages and their code are saved again.
+- The saved pages are the signed-in person's data: deleted at sign-out and when another person signs in on the
+  computer. Records not sent yet stay (sent at their author's next sign-in); signing out with records waiting asks first.
+- Registered in production builds only (`NEXT_PUBLIC_ENABLE_SW=1` in development). To try offline mode on your own
+  computer: `npm run preview` (builds and starts the real app), then turn the Wi-Fi off.
+
+### Moving between pages offline — `components/offline/offline-navigation.jsx`
+
+While offline, a click on any link of the app loads that page normally instead of asking the server through the app
+router: the worker answers at once with the saved copy. Programmatic moves use `navigateTo(router, href)`
+(`lib/navigation.js`), which does the same.
+
+### When the connection comes back — `lib/offline/connectivity.js`, `components/offline/offline-provider.jsx`
+
+- While offline, the server is asked every 5 s whether it is reachable again (a tiny request, none at all while the
+  browser itself says it has no network); after the browser's "online" signal it checks at once, then after 1.5 s and 4 s
+  (the network often needs a moment).
+- As soon as it answers: the waiting records are sent immediately (the growing pauses are forgotten), the page
+  refreshes its figures from the server by itself, the pages are saved again, and a message says
+  "Back online: 4 record(s) sent" (or which ones need attention).
 
 ### What the screen shows
 
 - Top bar: **All saved** / **Offline · 3 waiting** / **Sending 2…** / **1 needs attention** / **Sign in to send 4**.
-  Clicking it lists the records on this computer: waiting, needing attention (reason, Try again, Discard), sent
-  recently (with their reference numbers).
+  Clicking it shows **Pages ready without internet: 9 of 9** (with *Save them now* when some are missing) and lists the
+  records on this computer: waiting, needing attention (reason, Try again, Discard), sent recently (with their
+  reference numbers).
 - An amber strip while offline. Records not sent yet say **Not sent yet** in every list; a sale made offline gets
   a provisional receipt (`#3F9A`) and its S-number once sent.
 
@@ -140,9 +163,10 @@ rendered (`renderedAt`, server clock, from `departmentPage`). A refused record i
   repayment, undo), replay (nothing twice), two copies at once, dating by `occurredAt`, refusals and dependents,
   locked day, permissions, another organization's references, no session / another site, server actions and sync
   sharing keys, dates too old.
-- `e2e-offline/offline.spec.mjs` (`npm run test:offline`, production build): the server is stopped for real; the head
-  opens pages, sells, undoes, records an expense, reloads; the server is started again and everything arrives, once,
-  with its reference numbers.
+- `e2e-offline/offline.spec.mjs` (`npm run test:offline`, production build): the pages are saved without being opened;
+  then the Wi-Fi is "turned off" (browser offline and server stopped for real); the head opens every page from the menu,
+  sells, undoes, records an expense with a receipt photo, reloads; the connection comes back and, without any reload,
+  everything is sent once, the page refreshes itself and says so; plus a refused record and the Boss confirming cash offline.
 
 ---
 
