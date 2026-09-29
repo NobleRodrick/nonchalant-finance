@@ -7,9 +7,11 @@ import { AlertTriangle, Boxes, ClipboardCheck, History, MoreHorizontal, Pencil, 
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState, Money, Plates, StatCard, StatusBadge, inputClass } from "@/components/kit/primitives";
-import { runWithToast, useLiveRefresh } from "@/components/kit/client";
+import { useLiveRefresh } from "@/components/kit/client";
 import { countOf, formatMoney } from "@/lib/format";
-import { removeDish, restoreRemovedDish } from "@/actions/menu-stock";
+import { usePendingEffects, useRecorder } from "@/lib/offline/react";
+import { overlayDayStatus, overlayStock } from "@/lib/offline/overlay";
+import { dishActiveSpec } from "@/lib/offline/specs";
 import { AddDishDialog, AddStockDialog, CorrectCountDialog, DishHistoryDialog, EditDishDialog, OpeningStockDialog } from "./menu-stock-dialogs";
 import { cn } from "@/lib/utils";
 
@@ -17,9 +19,14 @@ import { cn } from "@/lib/utils";
  * Menu & Stock: the list of dishes (the menu) and the plates of each (the stock) on one page.
  * Opening + Added − Sold = Closing, per dish and in total, with the value at the unit price.
  */
-export function MenuStockBoard({ departmentId, departmentName, dateKey, dateLabel, isToday, locked, canManage, canBuy, showRemoved, stock }) {
-  useLiveRefresh(20);
+export function MenuStockBoard({ departmentId, departmentName, dateKey, dateLabel, isToday, renderedAt, locked: serverLocked, canManage, canBuy, showRemoved, stock: serverStock }) {
+  useLiveRefresh(60);
   const router = useRouter();
+  const record = useRecorder();
+  // The server's stock + plates and dishes this computer recorded that it does not include yet.
+  const effects = usePendingEffects(departmentId, renderedAt);
+  const stock = useMemo(() => overlayStock(serverStock, effects, { dateKey, isToday }), [serverStock, effects, dateKey, isToday]);
+  const locked = overlayDayStatus({ locked: serverLocked }, effects, { dateKey }).locked;
   const pathname = usePathname();
   const search = useSearchParams();
   const [q, setQ] = useState("");
@@ -38,12 +45,8 @@ export function MenuStockBoard({ departmentId, departmentName, dateKey, dateLabe
     else next.set("removed", "1");
     router.push(`${pathname}${next.toString() ? `?${next}` : ""}`);
   };
-  const remove = async (r) => {
-    if (await runWithToast(removeDish({ departmentId, dishId: r.dishId }), { success: `"${r.name}" removed from the menu.` })) router.refresh();
-  };
-  const restore = async (r) => {
-    if (await runWithToast(restoreRemovedDish({ departmentId, dishId: r.dishId }), { success: `"${r.name}" is back on the menu.` })) router.refresh();
-  };
+  const remove = (r) => record(dishActiveSpec({ departmentId, dishId: r.dishId, name: r.name, active: false }), { success: `"${r.name}" removed from the menu.` });
+  const restore = (r) => record(dishActiveSpec({ departmentId, dishId: r.dishId, name: r.name, active: true }), { success: `"${r.name}" is back on the menu.` });
 
   const formula = ["Opening", "+ Added", "− Sold", showSpoiled ? "− Spoiled" : null, showCorrected ? "± Corrections" : null].filter(Boolean).join(" ");
 
@@ -141,6 +144,7 @@ export function MenuStockBoard({ departmentId, departmentName, dateKey, dateLabe
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2 font-medium text-slate-900">
                         {r.name}
+                        {r.pending ? <span className="rounded bg-amber-100 px-1.5 text-[11px] font-semibold text-amber-900" title="Changes saved on this computer, not on the server yet">not sent yet</span> : null}
                         {!r.isActive ? <StatusBadge status="INACTIVE" label="Removed" /> : r.closing <= 0 ? <StatusBadge status="LATE" label="Out of stock" /> : r.lowStock ? <StatusBadge status="RETURNED" label="Low" /> : null}
                       </div>
                       {r.description ? <div className="text-xs text-slate-500">{r.description}</div> : null}

@@ -1,35 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { BellRing, HandCoins, Loader2, Printer } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BellRing, CloudOff, HandCoins, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Equation, Field, Money, StatCard, StatusBadge, inputClass } from "@/components/kit/primitives";
-import { runWithToast, useIdempotencyKey, useLiveRefresh, wholeNumber } from "@/components/kit/client";
+import { useLiveRefresh, wholeNumber } from "@/components/kit/client";
 import { ProofUpload } from "@/components/kit/proof-upload";
 import { VoidButton } from "@/components/kit/void-button";
 import { formatMoney } from "@/lib/format";
-import { recordHandover } from "@/actions/handovers";
-import { voidRecord } from "@/actions/money";
+import { formatDateKey } from "@/lib/timezone";
+import { usePendingEffects, useRecorder } from "@/lib/offline/react";
+import { overlayCashRequests, overlayDayStatus, overlayDrawer, overlayHandovers } from "@/lib/offline/overlay";
+import { handoverSpec, voidSpec } from "@/lib/offline/specs";
 import { cn } from "@/lib/utils";
 
 function HandoverDialog({ onClose, departmentId, max, request = null }) {
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
+  const record = useRecorder();
   const suggested = request ? Math.min(max, request.figures.outstanding) : 0;
-  const [f, setF] = useState({ amount: suggested > 0 ? String(suggested) : "", recipientName: "Boss", reference: "", note: "", attachmentIds: [] });
+  const [f, setF] = useState({ amount: suggested > 0 ? String(suggested) : "", recipientName: "Boss", reference: "", note: "", files: [] });
   const [busy, setBusy] = useState(false);
   const amount = Number(f.amount) || 0;
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(recordHandover({ departmentId, ...f, cashRequestId: request?.id || null, idempotencyKey: key }), { success: (d) => `Handover ${d.referenceNo} recorded. The Boss will confirm it.` });
+    const spec = handoverSpec({ departmentId, amount: f.amount, recipientName: f.recipientName, reference: f.reference, note: f.note, cashRequestId: request?.id || null });
+    const ok = await record({ ...spec, files: f.files }, { success: (d) => `Handover ${d.referenceNo} recorded. The Boss will confirm it.` });
     setBusy(false);
-    if (ok) {
-      renew();
-      onClose();
-      router.refresh();
-    }
+    if (ok) onClose();
   };
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
@@ -55,7 +52,7 @@ function HandoverDialog({ onClose, departmentId, max, request = null }) {
             <input id="h-note" className={inputClass} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder="Optional" />
           </Field>
           <div className="sm:col-span-2">
-            <ProofUpload departmentId={departmentId} value={f.attachmentIds} onChange={(ids) => setF({ ...f, attachmentIds: ids })} label="Attach a photo of the slip (optional)" />
+            <ProofUpload value={f.files} onChange={(files) => setF({ ...f, files })} label="Attach a photo of the slip (optional)" />
           </div>
         </div>
         {amount > 0 && amount <= max ? <p className="rounded-md bg-slate-50 px-3 py-2 text-sm">After this handover the drawer should hold <strong>{formatMoney(max - amount)}</strong>.</p> : null}
@@ -143,8 +140,16 @@ function RequestList({ requests, canHandOver, max, onHandOver }) {
   );
 }
 
-export function CashBoard({ departmentId, departmentName, canHandOver, canVoid, drawer, handovers, requests = [] }) {
-  useLiveRefresh(30);
+export function CashBoard({ departmentId, departmentName, todayKey, renderedAt, locked: serverLocked = false, canHandOver: canHandOverServer, canVoid: canVoidServer, drawer: serverDrawer, handovers: serverHandovers, requests: serverRequests = [] }) {
+  useLiveRefresh(60);
+  const record = useRecorder();
+  const effects = usePendingEffects(departmentId, renderedAt);
+  const drawer = useMemo(() => overlayDrawer(serverDrawer, effects, { dateKey: todayKey }), [serverDrawer, effects, todayKey]);
+  const handovers = useMemo(() => overlayHandovers(serverHandovers, effects, { todayKey, formatDate: formatDateKey }), [serverHandovers, effects, todayKey]);
+  const requests = useMemo(() => overlayCashRequests(serverRequests, effects), [serverRequests, effects]);
+  const locked = serverLocked || overlayDayStatus({ locked: false }, effects, { dateKey: todayKey }).locked;
+  const canHandOver = canHandOverServer && !locked;
+  const canVoid = canVoidServer && !locked;
   const [open, setOpen] = useState(false);
   const [forRequest, setForRequest] = useState(null);
   const [slip, setSlip] = useState(null);
@@ -203,8 +208,11 @@ export function CashBoard({ departmentId, departmentName, canHandOver, canVoid, 
               </thead>
               <tbody>
                 {handovers.map((h) => (
-                  <tr key={h.id} className={cn("border-b border-slate-100 last:border-0", h.status === "VOIDED" && "text-slate-400")}>
-                    <td className="px-4 py-2 font-medium">{h.referenceNo}{h.requestPeriod ? <div className="text-xs font-normal text-slate-500">Request {h.requestPeriod}</div> : null}</td>
+                  <tr key={h.id} className={cn("border-b border-slate-100 last:border-0", h.status === "VOIDED" && "text-slate-400")} data-pending={h.pending ? "1" : undefined}>
+                    <td className="px-4 py-2 font-medium">
+                      {h.pending && h.status !== "VOIDED" ? <span className="inline-flex items-center gap-1 text-amber-700"><CloudOff className="h-3.5 w-3.5" /> Not sent yet</span> : h.referenceNo}
+                      {h.requestPeriod ? <div className="text-xs font-normal text-slate-500">Request {h.requestPeriod}</div> : null}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2">{h.dateLabel}</td>
                     <td className="px-3 py-2">{h.recipient}</td>
                     <td className="px-3 py-2 text-right font-medium"><Money value={h.amount} /></td>
@@ -216,7 +224,7 @@ export function CashBoard({ departmentId, departmentName, canHandOver, canVoid, 
                     <td className="whitespace-nowrap px-3 py-1 text-right">
                       <Button size="sm" variant="ghost" onClick={() => setSlip(h)}><Printer className="h-3.5 w-3.5" /> Slip</Button>
                       {canVoid && h.status === "RECORDED" && h.isToday && h.transactionId ? (
-                        <VoidButton what="handover" reference={h.referenceNo} action={(reason) => voidRecord({ transactionId: h.transactionId, reason })} />
+                        <VoidButton what="handover" reference={h.pending ? "this handover" : h.referenceNo} onVoid={(reason) => record(voidSpec({ departmentId, dateKey: h.dateKey, row: { id: h.transactionId, referenceNo: h.referenceNo, amount: h.amount, methodCode: "CASH", categoryId: "cash-handover" }, type: "CASH_HANDOVER", reason }), { success: `${h.referenceNo} voided.` })} />
                       ) : null}
                     </td>
                   </tr>

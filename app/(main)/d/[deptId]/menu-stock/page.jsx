@@ -14,7 +14,7 @@ export const metadata = { title: "Menu & Stock" };
 export default async function MenuStockPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = await searchParams;
-  const { user, department, perms } = await departmentPage(deptId, { module: "menu-stock" });
+  const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "menu-stock" });
   const { dateKey, todayKey, isToday, timeZone } = pageDate(user, sp?.date);
   const showRemoved = sp?.removed === "1";
   const [stock, status] = await Promise.all([
@@ -36,6 +36,7 @@ export default async function MenuStockPage({ params, searchParams }) {
         dateKey={dateKey}
         dateLabel={formatDateKey(dateKey)}
         isToday={isToday}
+        renderedAt={renderedAt}
         locked={status.locked}
         canManage={perms.manageStock}
         canBuy={perms.purchases}

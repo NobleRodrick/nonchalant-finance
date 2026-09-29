@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Loader2, Paperclip, Search } from "lucide-react";
+import { Loader2, Paperclip, Search, Undo2 } from "lucide-react";
+import { UndoSaleDialog } from "@/components/restaurant/undo-sale";
+import { PendingRecords } from "@/components/offline/pending-records";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, Field, KeyValues, Money, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
 import { countOf, formatMoney } from "@/lib/format";
 import { getRecordDetail } from "@/actions/history";
+import { toDateKey } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 
 const METHOD = { CASH: "Cash", MOMO: "Mobile Money", BANK_TRANSFER: "Bank", CREDIT: "On credit" };
@@ -17,11 +20,16 @@ const ACTION_LABELS = {
   STOCK_CORRECTED: "Count corrected", OPENING_STOCK_SET: "Opening stock set", STOCK_RECORD_VOIDED: "Voided", DEBT_CANCELLED: "Debt cancelled",
 };
 
-function Detail({ target, onClose }) {
+function Detail({ target, onClose, canUndo = false }) {
   const [data, setData] = useState(null);
+  const [undo, setUndo] = useState(null);
   useEffect(() => {
     let alive = true;
-    if (target) getRecordDetail(target).then((res) => alive && setData(res?.success ? res.data : { error: res?.error || "Could not load." }));
+    if (target) {
+      getRecordDetail(target)
+        .then((res) => alive && setData(res?.success ? res.data : { error: res?.error || "Could not load." }))
+        .catch(() => alive && setData({ error: "No connection: the details open when the connection is back." }));
+    }
     return () => {
       alive = false;
     };
@@ -97,6 +105,30 @@ function Detail({ target, onClose }) {
                 {r.purchase.stockAdds.length ? <div className="mt-1 text-xs">Plates added: {r.purchase.stockAdds.map((m) => `${Number(m.quantity)} × ${m.menuItem?.name} (${m.referenceNo})`).join(", ")}</div> : null}
               </div>
             ) : null}
+            {canUndo && r.type === "SALE" && r.status !== "VOIDED" ? (
+              <Button
+                variant="outline"
+                className="text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                onClick={() =>
+                  setUndo({
+                    id: r.id,
+                    departmentId: r.departmentId,
+                    dateKey: toDateKey(new Date(r.date)),
+                    referenceNo: r.referenceNo,
+                    net: Number(r.amount),
+                    gross: Number(r.grossAmount ?? r.amount),
+                    discount: Number(r.discountAmount || 0),
+                    method: r.paymentMethod,
+                    debtRef: r.debt?.referenceNo || null,
+                    debtId: r.debt?.id || null,
+                    customer: r.debt?.debtorName || r.customerName,
+                    lines: (r.saleLines || []).map((l) => ({ dishId: l.menuItemId, name: l.menuItem?.name, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), total: Number(l.totalAmount) })),
+                  })
+                }
+              >
+                <Undo2 className="h-4 w-4" /> Undo this sale
+              </Button>
+            ) : null}
             {data.attachments?.length ? (
               <div className="flex flex-wrap gap-2">
                 {data.attachments.map((a) => (
@@ -110,6 +142,7 @@ function Detail({ target, onClose }) {
           </div>
         )}
       </DialogContent>
+      {undo ? <UndoSaleDialog sale={undo} departmentId={undo.departmentId} dateKey={undo.dateKey} onClose={() => setUndo(null)} onUndone={() => onClose()} /> : null}
     </Dialog>
   );
 }
@@ -130,7 +163,7 @@ function AuditTrail({ audit }) {
   );
 }
 
-export function HistoryBoard({ departmentId, filters, rangeLabel, types, people, todayKey, rows, totals }) {
+export function HistoryBoard({ departmentId, filters, rangeLabel, types, people, todayKey, rows, totals, canUndo = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const [f, setF] = useState(filters);
@@ -141,6 +174,7 @@ export function HistoryBoard({ departmentId, filters, rangeLabel, types, people,
   };
   return (
     <div className="space-y-4">
+      <PendingRecords departmentId={departmentId} />
       <form
         className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:grid-cols-2 lg:grid-cols-6"
         onSubmit={(e) => {
@@ -218,7 +252,7 @@ export function HistoryBoard({ departmentId, filters, rangeLabel, types, people,
           </table>
         </div>
       )}
-      {target ? <Detail key={`${target.kind}-${target.id}`} target={target} onClose={() => setTarget(null)} /> : null}
+      {target ? <Detail key={`${target.kind}-${target.id}`} target={target} onClose={() => setTarget(null)} canUndo={canUndo} /> : null}
     </div>
   );
 }

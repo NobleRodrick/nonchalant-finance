@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { BellRing, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Field, Money, Pill, Section, inputClass } from "@/components/kit/primitives";
-import { runWithToast } from "@/components/kit/client";
-import { requestCash, cancelCashRequestAction } from "@/actions/cash-requests";
+import { useOutboxOps, useRecorder } from "@/lib/offline/react";
+import { STATUS } from "@/lib/offline/status";
 import { addDaysToKey, periodRange } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
 
@@ -34,8 +33,13 @@ const REQUEST_PILL = {
 };
 
 /** The Boss asks departments for the cash of a period, and follows his requests. */
-export function CashRequests({ departments, requests, todayKey, focusDeptId = null }) {
-  const router = useRouter();
+export function CashRequests({ departments, requests: serverRequests, todayKey, focusDeptId = null }) {
+  const record = useRecorder();
+  const ops = useOutboxOps();
+  const waitingOps = ops.filter((o) => (o.kind === "cash.request" || o.kind === "cash.request.cancel") && (o.status === STATUS.PENDING || o.status === STATUS.SENDING));
+  const cancelled = new Set(waitingOps.filter((o) => o.kind === "cash.request.cancel").map((o) => o.input?.requestId));
+  const requests = serverRequests.map((r) => (cancelled.has(r.id) ? { ...r, status: "CANCELLED", pending: true } : r));
+  const waitingRequests = waitingOps.filter((o) => o.kind === "cash.request");
   const [scope, setScope] = useState(focusDeptId ? [focusDeptId] : []);
   const [period, setPeriod] = useState("today");
   const [custom, setCustom] = useState({ fromKey: todayKey, toKey: todayKey });
@@ -47,26 +51,31 @@ export function CashRequests({ departments, requests, todayKey, focusDeptId = nu
 
   const send = async () => {
     setBusy(true);
-    const ok = await runWithToast(requestCash({ departmentIds: scope, ...range, note }), {
-      success: (d) =>
-        `${d.created.length ? `Request sent to ${d.created.map((c) => c.department).join(", ")}.` : "No new request sent."}${d.skipped.length ? ` Already waiting: ${d.skipped.join(", ")}.` : ""}`,
-    });
+    const names = scope.length ? departments.filter((d) => scope.includes(d.id)).map((d) => d.name).join(", ") : "all departments";
+    const ok = await record(
+      { kind: "cash.request", label: "Cash request", departmentId: null, input: { departmentIds: scope, ...range, note }, meta: { summary: `${names} · ${range.fromKey === range.toKey ? range.fromKey : `${range.fromKey} – ${range.toKey}`}` } },
+      {
+        success: (d) =>
+          `${d.created.length ? `Request sent to ${d.created.map((c) => c.department).join(", ")}.` : "No new request sent."}${d.skipped.length ? ` Already waiting: ${d.skipped.join(", ")}.` : ""}`,
+      }
+    );
     setBusy(false);
-    if (ok) {
-      setNote("");
-      router.refresh();
-    }
+    if (ok) setNote("");
   };
   const cancel = async (r) => {
     setCancelling(r.id);
-    const ok = await runWithToast(cancelCashRequestAction({ requestId: r.id }), { success: "Request cancelled." });
+    await record({ kind: "cash.request.cancel", label: "Cash request cancelled", departmentId: null, input: { requestId: r.id }, meta: { summary: `${r.department} · ${r.period}` } }, { success: "Request cancelled." });
     setCancelling(null);
-    if (ok) router.refresh();
   };
   const open = requests.filter((r) => r.status === "OPEN");
 
   return (
     <div className="space-y-6">
+      {waitingRequests.length ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900" data-testid="requests-waiting">
+          {waitingRequests.length} request(s) saved on this computer ({waitingRequests.map((o) => o.meta?.summary).join("; ")}): the heads are notified when the connection is back.
+        </p>
+      ) : null}
       <Section title="Request cash" description="Ask department heads to hand over the cash of a period. They are notified at once and see the amount due." >
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]" data-testid="request-cash">
           <div className="space-y-3">

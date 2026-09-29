@@ -6,7 +6,8 @@ import { getJwtSecretKey } from "@/lib/jwt-secret";
  * Route gate: application pages require a signed session cookie. Authorization (roles,
  * department membership) is enforced again inside every page and server action.
  */
-const PUBLIC_PREFIXES = ["/_next", "/favicon.ico", "/logo.jpg", "/api/inngest"];
+// The service worker, the offline page and the connectivity check must load without a session.
+const PUBLIC_PREFIXES = ["/_next", "/favicon.ico", "/logo.jpg", "/api/inngest", "/api/health", "/sw.js", "/offline.html", "/manifest.webmanifest", "/icons/"];
 const PUBLIC_EXACT = ["/", "/login", "/register"];
 const AUTH_ROUTES = ["/login", "/register", "/sign-in", "/sign-up"];
 
@@ -43,7 +44,11 @@ export async function proxy(req) {
   }
   // Remember the last department opened (/d/<id>/…) so "Home" returns to it.
   const dept = pathname.match(/^\/d\/([0-9a-f-]{36})(?:\/|$)/i)?.[1];
-  const res = NextResponse.next();
+  // The app layout checks access to the page before anything is streamed, so a refused page
+  // answers with a real 404 / redirect status (see app/(main)/layout.js).
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-sf-path", pathname);
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
   if (dept && req.cookies.get("sf_active_dept")?.value !== dept) {
     res.cookies.set("sf_active_dept", dept, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 30 * 24 * 60 * 60 });
   }

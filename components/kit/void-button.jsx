@@ -1,37 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Ban, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { runWithToast } from "@/components/kit/client";
 import { textareaClass } from "@/components/kit/primitives";
 
 /**
  * Void with a mandatory reason. Nothing is deleted: the record stays visible as "Void" and
- * its effects (money, plates, debts) are reversed. `action(reason)` performs the void.
+ * its effects (money, plates, debts) are reversed. `onVoid(reason)` records the void (and shows
+ * its message); it resolves truthy when done.
  */
-export function VoidButton({ action, reference, what = "record", label = "Void", size = "sm", variant = "ghost" }) {
-  const router = useRouter();
+export function VoidButton({ onVoid, reference, what = "record", label = "Void", size = "sm", variant = "ghost" }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(action(reason), { success: `${reference || "Record"} voided.` });
+    const ok = await onVoid(reason.trim());
     setBusy(false);
     if (ok) {
       setOpen(false);
       setReason("");
-      router.refresh();
     }
   };
 
   return (
     <>
-      <Button type="button" variant={variant} size={size} className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setOpen(true)}>
+      <Button type="button" variant={variant} size={size} className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setOpen(true)} aria-label={`${label} ${reference || what}`}>
         <Ban className="h-3.5 w-3.5" /> {label}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Calculator, Loader2, Printer, Send } from "lucide-react";
+import { Calculator, CloudOff, Loader2, Printer, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Banner, Field, KeyValues, Money, StatusBadge, inputClass, textareaClass } from "@/components/kit/primitives";
-import { runWithToast, useLiveRefresh, wholeNumber } from "@/components/kit/client";
+import { useLiveRefresh, wholeNumber } from "@/components/kit/client";
 import { formatMoney } from "@/lib/format";
-import { saveReportDraft, sendReportToBoss } from "@/actions/daily-report";
+import { useRecorder } from "@/lib/offline/react";
+import { reportSpec } from "@/lib/offline/specs";
 
 /** Print, count the cash, add notes and send the day's report to the Boss. */
-export function ReportToolbar({ departmentId, dateKey, status, locked, canSubmit, cash, totals, notes: savedNotes, reviewNotes }) {
-  useLiveRefresh(locked ? 600 : 30);
-  const router = useRouter();
+export function ReportToolbar({ departmentId, dateKey, status, locked, pendingSend = false, canSubmit, cash, totals, notes: savedNotes, reviewNotes }) {
+  useLiveRefresh(locked ? 600 : 60);
+  const record = useRecorder();
   const [open, setOpen] = useState(null); // "count" | "send"
   const [counted, setCounted] = useState(cash.counted === null ? "" : String(cash.counted));
   const [notes, setNotes] = useState(savedNotes || "");
@@ -23,21 +23,15 @@ export function ReportToolbar({ departmentId, dateKey, status, locked, canSubmit
 
   const save = async () => {
     setBusy(true);
-    const ok = await runWithToast(saveReportDraft({ departmentId, dateKey, countedCash: counted, notes }), { success: "Cash count saved." });
+    const ok = await record(reportSpec({ departmentId, dateKey, countedCash: counted, notes, send: false }), { success: "Cash count saved." });
     setBusy(false);
-    if (ok) {
-      setOpen(null);
-      router.refresh();
-    }
+    if (ok) setOpen(null);
   };
   const send = async () => {
     setBusy(true);
-    const ok = await runWithToast(sendReportToBoss({ departmentId, dateKey, countedCash: counted, notes }), { success: (d) => `Report ${d.referenceNo} sent to the Boss.` });
+    const ok = await record(reportSpec({ departmentId, dateKey, countedCash: counted, notes, send: true }), { success: (d) => `Report ${d.referenceNo} sent to the Boss.` });
     setBusy(false);
-    if (ok) {
-      setOpen(null);
-      router.refresh();
-    }
+    if (ok) setOpen(null);
   };
 
   return (
@@ -47,7 +41,12 @@ export function ReportToolbar({ departmentId, dateKey, status, locked, canSubmit
           <strong>Returned by the Boss:</strong> “{reviewNotes}”. Make the corrections, then send the report again.
         </Banner>
       ) : null}
-      {locked ? (
+      {locked && pendingSend ? (
+        <Banner tone="warn">
+          <CloudOff className="mr-1.5 inline h-4 w-4 align-[-3px]" />
+          The report is saved on this computer and goes to the Boss as soon as the connection is back. The day is locked.
+        </Banner>
+      ) : locked ? (
         <Banner tone="info">
           <span className="mr-2"><StatusBadge status={status} /></span>
           This report was sent to the Boss. The day is locked; the Boss can return it if something must change.

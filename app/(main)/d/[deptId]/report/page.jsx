@@ -7,8 +7,7 @@ import { startOfDateKey, formatDateKey } from "@/lib/timezone";
 import { serialize } from "@/lib/serialize";
 import { PageHeader } from "@/components/kit/primitives";
 import { DateNav } from "@/components/kit/date-nav";
-import { DailyReportDocument } from "@/components/reports/daily-report-document";
-import { ReportToolbar } from "@/components/reports/report-toolbar";
+import { LiveReport } from "@/components/reports/live-report";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Today's report" };
@@ -16,7 +15,7 @@ export const metadata = { title: "Today's report" };
 export default async function ReportPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = await searchParams;
-  const { user, department, perms } = await departmentPage(deptId, { module: "report" });
+  const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "report" });
   const { dateKey, todayKey, isToday, timeZone } = pageDate(user, sp?.date);
   const saved = await db.dailyReport.findUnique({
     where: { departmentId_reportDate: { departmentId: department.id, reportDate: startOfDateKey(dateKey, timeZone) } },
@@ -42,18 +41,16 @@ export default async function ReportPage({ params, searchParams }) {
           </div>
         }
       />
-      <ReportToolbar
+      <LiveReport
         departmentId={department.id}
         dateKey={dateKey}
-        status={model.status}
-        locked={Boolean(frozen) || LOCKED_STATUSES.includes(model.status)}
+        renderedAt={renderedAt}
+        model={model}
+        frozen={Boolean(frozen) || LOCKED_STATUSES.includes(model.status)}
         canSubmit={perms.reportSubmit}
-        cash={model.cash}
-        totals={{ moneyIn: model.money.moneyIn, moneyOut: model.money.moneyOut, result: model.money.result, stockValue: model.stock.totals.value, debts: model.debts.closing }}
         notes={saved?.notes || ""}
         reviewNotes={saved?.status === "RETURNED" ? saved.reviewNotes : null}
       />
-      <DailyReportDocument model={model} />
     </div>
   );
 }

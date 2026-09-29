@@ -16,7 +16,7 @@ export const metadata = { title: "Money in / out" };
 export default async function MoneyPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = await searchParams;
-  const { user, department, perms } = await departmentPage(deptId, { module: "money" });
+  const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "money" });
   const { dateKey, todayKey, isToday, timeZone } = pageDate(user, sp?.date);
   const { start, end } = dayBounds(startOfDateKey(dateKey, timeZone), timeZone);
   const [transactions, dishes, status] = await Promise.all([
@@ -39,6 +39,8 @@ export default async function MoneyPage({ params, searchParams }) {
       direction: ["RENT_INCOME", "OTHER_INCOME", "INCOME"].includes(t.type) ? "in" : "out",
       time: formatTimeInZone(t.date, timeZone),
       category: categoryLabel(t.category),
+      categoryId: t.category,
+      methodCode: t.paymentMethod,
       description: t.description,
       counterparty: t.counterparty,
       method: METHOD_LABELS[t.paymentMethod] || t.paymentMethod,
@@ -48,6 +50,7 @@ export default async function MoneyPage({ params, searchParams }) {
       voidReason: t.voidReason,
       purchaseLines: t.purchase?.lines.map((l) => l.description).filter(Boolean) || [],
       platesAdded: t.purchase?.stockAdds.filter((m) => Number(m.quantity) > 0).map((m) => `${Number(m.quantity)} × ${m.menuItem?.name}`) || [],
+      stockAdds: t.purchase?.stockAdds.filter((m) => Number(m.quantity) > 0 && !m.voidedAt).map((m) => ({ dishId: m.menuItemId, plates: Number(m.quantity) })) || [],
     }));
   return (
     <div>
@@ -61,6 +64,8 @@ export default async function MoneyPage({ params, searchParams }) {
       <MoneyBoard
         departmentId={department.id}
         dateKey={isToday ? null : dateKey}
+        dayKey={dateKey}
+        renderedAt={renderedAt}
         locked={status.locked}
         perms={{ moneyIn: perms.moneyIn, purchases: perms.purchases, expenses: perms.expenses, discounts: perms.discounts, void: perms.void, manageStock: perms.manageStock }}
         summary={serialize({
@@ -68,7 +73,7 @@ export default async function MoneyPage({ params, searchParams }) {
           moneyIn: money.moneyIn, discounts: money.discounts, purchases: money.purchases, expenses: money.expenses, otherExpenses: money.otherExpenses, moneyOut: money.moneyOut, result: money.result,
         })}
         records={serialize(records)}
-        dishes={serialize(dishes.map((d) => ({ id: d.id, name: d.name })))}
+        dishes={serialize(dishes.map((d) => ({ id: d.id, name: d.name, price: Number(d.sellingPrice), available: Number(d.currentQuantity) })))}
       />
     </div>
   );

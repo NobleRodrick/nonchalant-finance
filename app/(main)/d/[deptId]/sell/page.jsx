@@ -14,7 +14,7 @@ export const metadata = { title: "Sell" };
 export default async function SellPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = await searchParams;
-  const { user, department, perms } = await departmentPage(deptId, { module: "sell" });
+  const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "sell" });
   const { dateKey, todayKey, isToday, timeZone } = pageDate(user, sp?.date);
   const { start, end } = dayBounds(startOfDateKey(dateKey, timeZone), timeZone);
   const [dishes, debtors, sales, status] = await Promise.all([
@@ -22,7 +22,7 @@ export default async function SellPage({ params, searchParams }) {
     db.debtor.findMany({ where: { departmentId: department.id, isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, phone: true } }),
     db.transaction.findMany({
       where: { departmentId: department.id, type: "SALE", date: { gte: start, lte: end } },
-      include: { saleLines: { include: { menuItem: { select: { name: true } } } }, user: { select: { name: true } }, debt: { select: { referenceNo: true } } },
+      include: { saleLines: { include: { menuItem: { select: { name: true } } } }, user: { select: { name: true } }, debt: { select: { id: true, referenceNo: true } } },
       orderBy: { date: "desc" },
       take: 200,
     }),
@@ -35,6 +35,8 @@ export default async function SellPage({ params, searchParams }) {
       <PointOfSale
         departmentId={department.id}
         dateKey={isToday ? null : dateKey}
+        dayKey={dateKey}
+        renderedAt={renderedAt}
         locked={status.locked}
         canDiscount={perms.discount}
         discountLimit={perms.discount ? null : perms.discountLimited ? department.cashierDiscountLimit : 0}
@@ -47,13 +49,14 @@ export default async function SellPage({ params, searchParams }) {
             id: s.id,
             referenceNo: s.referenceNo,
             time: formatTimeInZone(s.date, timeZone),
-            lines: s.saleLines.map((l) => ({ name: l.menuItem?.name, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), total: Number(l.totalAmount) })),
+            lines: s.saleLines.map((l) => ({ dishId: l.menuItemId, name: l.menuItem?.name, quantity: Number(l.quantity), unitPrice: Number(l.unitPrice), total: Number(l.totalAmount) })),
             gross: Number(s.grossAmount ?? s.amount),
             discount: Number(s.discountAmount || 0),
             net: Number(s.amount),
             method: s.paymentMethod,
             customer: s.customerName,
             debtRef: s.debt?.referenceNo || null,
+            debtId: s.debt?.id || null,
             by: s.user?.name,
             voided: s.status === "VOIDED",
             voidReason: s.voidReason,

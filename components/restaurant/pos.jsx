@@ -1,16 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Banknote, CreditCard, Landmark, Loader2, Minus, Plus, Printer, Search, Smartphone, Trash2, UserRound } from "lucide-react";
+import { Banknote, CloudOff, CreditCard, Landmark, Loader2, Minus, Plus, Printer, Search, Smartphone, Trash2, Undo2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, Field, Money, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
-import { runWithToast, useIdempotencyKey, useLiveRefresh, wholeNumber } from "@/components/kit/client";
-import { VoidButton } from "@/components/kit/void-button";
+import { useLiveRefresh, wholeNumber } from "@/components/kit/client";
+import { UndoSaleDialog } from "@/components/restaurant/undo-sale";
 import { countOf, formatMoney } from "@/lib/format";
-import { recordSale } from "@/actions/sales";
-import { voidRecord } from "@/actions/money";
+import { usePendingEffects, useRecorder } from "@/lib/offline/react";
+import { overlayDayStatus, overlayDebtors, overlayDishes, overlaySales } from "@/lib/offline/overlay";
+import { saleSpec } from "@/lib/offline/specs";
+import { localId, provisionalCode } from "@/lib/offline/local-ids";
 import { cn } from "@/lib/utils";
 
 const METHODS = [
@@ -21,17 +22,24 @@ const METHODS = [
 ];
 const METHOD_LABEL = Object.fromEntries(METHODS.map((m) => [m.id, m.label]));
 
-function Receipt({ sale, departmentName, onClose }) {
+function Receipt({ sale, departmentName, onClose, onUndo }) {
   if (!sale) return null;
   return (
     <Dialog open={Boolean(sale)} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>Sale {sale.referenceNo} recorded</DialogTitle>
+          <DialogTitle>{sale.pending ? "Sale saved on this computer" : `Sale ${sale.referenceNo} recorded`}</DialogTitle>
         </DialogHeader>
+        {sale.pending ? (
+          <p className="flex items-start gap-2 rounded-md bg-amber-50 p-2 text-xs text-amber-900" data-testid="receipt-pending">
+            <CloudOff className="mt-0.5 h-3.5 w-3.5 shrink-0" /> It gets its sale number when it reaches the server. The plates already left the stock.
+          </p>
+        ) : null}
         <div id="receipt" className="receipt rounded-lg border border-dashed border-slate-300 p-4 font-mono text-xs">
           <div className="text-center font-bold">{departmentName}</div>
-          <div className="mb-2 text-center">Receipt {sale.referenceNo} · {new Date().toLocaleString("en-GB", { timeZone: "Africa/Douala" })}</div>
+          <div className="mb-2 text-center">
+            {sale.pending ? `Provisional receipt ${sale.code}` : `Receipt ${sale.referenceNo}`} · {new Date().toLocaleString("en-GB", { timeZone: "Africa/Douala" })}
+          </div>
           {sale.lines.map((l) => (
             <div key={l.name} className="flex justify-between">
               <span>{l.quantity} × {l.name}</span>
@@ -46,13 +54,18 @@ function Receipt({ sale, departmentName, onClose }) {
             <span>{formatMoney(sale.total)}</span>
           </div>
           <div className="mt-1">Paid: {METHOD_LABEL[sale.method]}</div>
-          {sale.debtReference ? <div>Debt {sale.debtReference} opened for {sale.customer}</div> : null}
+          {sale.debtReference ? <div>Debt {sale.debtReference} opened for {sale.customer}</div> : sale.method === "CREDIT" ? <div>Debt opened for {sale.customer}</div> : null}
           <div className="mt-2 text-center">Thank you</div>
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => { document.body.classList.add("print-receipt"); window.print(); document.body.classList.remove("print-receipt"); }}>
             <Printer className="h-4 w-4" /> Print receipt
           </Button>
+          {onUndo ? (
+            <Button variant="outline" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => onUndo(sale)}>
+              <Undo2 className="h-4 w-4" /> Undo this sale
+            </Button>
+          ) : null}
           <Button onClick={onClose}>New sale</Button>
         </DialogFooter>
       </DialogContent>
@@ -60,10 +73,15 @@ function Receipt({ sale, departmentName, onClose }) {
   );
 }
 
-export function PointOfSale({ departmentId, departmentName, dateKey, locked, canDiscount, discountLimit, canVoid, dishes, debtors, sales }) {
-  useLiveRefresh(20);
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
+export function PointOfSale({ departmentId, departmentName, dateKey, dayKey, renderedAt, locked: serverLocked, canDiscount, discountLimit, canVoid, dishes: serverDishes, debtors: serverDebtors, sales: serverSales }) {
+  useLiveRefresh(60);
+  const record = useRecorder();
+  // The server's figures + what this computer recorded that they do not include yet.
+  const effects = usePendingEffects(departmentId, renderedAt);
+  const dishes = useMemo(() => overlayDishes(serverDishes, effects), [serverDishes, effects]);
+  const debtors = useMemo(() => overlayDebtors(serverDebtors, effects), [serverDebtors, effects]);
+  const sales = useMemo(() => overlaySales(serverSales, effects, { dateKey: dayKey }), [serverSales, effects, dayKey]);
+  const locked = overlayDayStatus({ locked: serverLocked }, effects, { dateKey: dayKey }).locked;
   const [cart, setCart] = useState({});
   const [q, setQ] = useState("");
   const [method, setMethod] = useState("CASH");
@@ -73,6 +91,8 @@ export function PointOfSale({ departmentId, departmentName, dateKey, locked, can
   const [newDebtor, setNewDebtor] = useState({ name: "", phone: "" });
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState(null);
+  const [undo, setUndo] = useState(null);
+  const canUndo = canVoid && !locked; // department heads only; the Boss never records or undoes
 
   const byId = useMemo(() => Object.fromEntries(dishes.map((d) => [d.id, d])), [dishes]);
   const lines = Object.entries(cart).filter(([, n]) => n > 0).map(([id, n]) => ({ ...byId[id], quantity: n })).filter((l) => l.id);
@@ -95,6 +115,19 @@ export function PointOfSale({ departmentId, departmentName, dateKey, locked, can
     setNewDebtor({ name: "", phone: "" });
   };
 
+  // "Undo and fix": the undone sale's dishes, payment and discount go back into the basket.
+  const refill = (sale) => {
+    setCart(Object.fromEntries((sale.lines || []).filter((l) => l.dishId).map((l) => [l.dishId, l.quantity])));
+    setMethod(sale.method || "CASH");
+    setDiscount(sale.discount ? String(sale.discount) : "");
+    setDiscountReason("");
+    if (sale.method === "CREDIT" && sale.customer) {
+      const known = debtors.find((d) => d.name.toLowerCase() === String(sale.customer).toLowerCase());
+      setDebtorId(known ? known.id : "__new");
+      setNewDebtor(known ? { name: "", phone: "" } : { name: sale.customer, phone: "" });
+    }
+  };
+
   const creditOk = method !== "CREDIT" || debtorId || newDebtor.name.trim().length >= 2;
   const discountOk = !disc || discountReason.trim();
   const overLimit = !canDiscount && disc > (discountLimit || 0);
@@ -102,33 +135,40 @@ export function PointOfSale({ departmentId, departmentName, dateKey, locked, can
 
   const submit = async () => {
     setBusy(true);
-    const payload = {
+    const known = method === "CREDIT" && debtorId && debtorId !== "__new" ? debtors.find((d) => d.id === debtorId) : null;
+    const customer = method === "CREDIT" ? known?.name || newDebtor.name.trim() : null;
+    const spec = saleSpec({
       departmentId,
       dateKey,
-      lines: lines.map((l) => ({ dishId: l.id, quantity: l.quantity })),
-      paymentMethod: method,
-      discountAmount: disc,
+      lines: lines.map((l) => ({ dishId: l.id, name: l.name, price: l.price, quantity: l.quantity })),
+      method,
+      discount: disc,
       discountReason,
-      debtorId: method === "CREDIT" && debtorId && debtorId !== "__new" ? debtorId : null,
-      debtor: method === "CREDIT" && (!debtorId || debtorId === "__new") ? newDebtor : null,
-      idempotencyKey: key,
-    };
-    const res = await runWithToast(recordSale(payload), { success: (d) => `Sale ${d.referenceNo} recorded: ${formatMoney(d.totals?.netAmount ?? total)}.` });
+      debtorId: known?.id || null,
+      debtor: known ? null : { name: newDebtor.name, phone: newDebtor.phone },
+      customer,
+    });
+    const out = await record(spec, { success: (d) => `Sale ${d.referenceNo} recorded: ${formatMoney(d.totals?.netAmount ?? total)}.` });
     setBusy(false);
-    if (res) {
-      setReceipt({
-        referenceNo: res.referenceNo,
-        lines: lines.map((l) => ({ name: l.name, quantity: l.quantity, price: l.price })),
-        discount: disc,
-        total,
-        method,
-        customer: method === "CREDIT" ? (debtors.find((d) => d.id === debtorId)?.name || newDebtor.name) : null,
-        debtReference: res.debtReference,
-      });
-      renew();
-      reset();
-      router.refresh();
-    }
+    if (!out) return; // refused: the basket stays as it is, to be corrected
+    const applied = out.status === "applied";
+    setReceipt({
+      id: applied ? out.result.transactionId : localId("transactionId", out.op.key),
+      referenceNo: applied ? out.result.referenceNo : "Not sent yet",
+      code: provisionalCode(out.op.key),
+      pending: !applied,
+      net: total,
+      gross,
+      debtRef: applied ? out.result.debtReference : null,
+      debtId: applied ? out.result.debtId : null,
+      lines: lines.map((l) => ({ dishId: l.id, name: l.name, quantity: l.quantity, price: l.price, unitPrice: l.price, total: l.quantity * l.price })),
+      discount: disc,
+      total,
+      method,
+      customer,
+      debtReference: applied ? out.result.debtReference : null,
+    });
+    reset();
   };
 
   return (
@@ -277,8 +317,10 @@ export function PointOfSale({ departmentId, departmentName, dateKey, locked, can
                 </thead>
                 <tbody>
                   {sales.map((s) => (
-                    <tr key={s.id} className={cn("border-b border-slate-100 last:border-0", s.voided && "text-slate-400 line-through decoration-slate-300")}>
-                      <td className="px-4 py-2 font-medium no-underline">{s.referenceNo}</td>
+                    <tr key={s.id} className={cn("border-b border-slate-100 last:border-0", s.voided && "text-slate-400 line-through decoration-slate-300")} data-pending={s.pending ? "1" : undefined}>
+                      <td className="px-4 py-2 font-medium no-underline">
+                        {s.pending ? <span className="inline-flex items-center gap-1 text-amber-700" title="Saved on this computer, not on the server yet"><CloudOff className="h-3.5 w-3.5" /> Not sent yet</span> : s.referenceNo}
+                      </td>
                       <td className="px-3 py-2">{s.time}</td>
                       <td className="px-3 py-2">{s.lines.map((l) => `${l.quantity} × ${l.name}`).join(", ") || "Unlisted items"}</td>
                       <td className="px-3 py-2">
@@ -289,8 +331,12 @@ export function PointOfSale({ departmentId, departmentName, dateKey, locked, can
                       <td className="px-3 py-2 text-right font-medium"><Money value={s.net} /></td>
                       <td className="px-3 py-2 text-xs">{s.by}</td>
                       <td className="px-3 py-1 text-right">
-                        {s.voided ? <StatusBadge status="VOIDED" /> : canVoid && !locked ? (
-                          <VoidButton what="sale" reference={s.referenceNo} action={(reason) => voidRecord({ transactionId: s.id, reason })} />
+                        {s.voided ? (
+                          <span title={s.voidReason || undefined}><StatusBadge status="VOIDED" label={s.undoPending ? "Undone (not sent)" : "Undone"} /></span>
+                        ) : canUndo ? (
+                          <Button type="button" size="sm" variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setUndo(s)} aria-label={`Undo sale ${s.referenceNo}`}>
+                            <Undo2 className="h-3.5 w-3.5" /> Undo
+                          </Button>
                         ) : null}
                       </td>
                     </tr>
@@ -301,7 +347,8 @@ export function PointOfSale({ departmentId, departmentName, dateKey, locked, can
           )}
         </div>
       </div>
-      <Receipt sale={receipt} departmentName={departmentName} onClose={() => setReceipt(null)} />
+      <Receipt sale={receipt} departmentName={departmentName} onClose={() => setReceipt(null)} onUndo={canUndo ? (sale) => { setReceipt(null); setUndo(sale); } : null} />
+      {undo ? <UndoSaleDialog sale={undo} departmentId={departmentId} dateKey={dayKey} onClose={() => setUndo(null)} onFix={refill} /> : null}
     </div>
   );
 }

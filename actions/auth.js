@@ -14,7 +14,8 @@ import {
 } from "@/lib/auth";
 import { runAction } from "@/lib/action";
 import { forbidden, invalid, unauthorized } from "@/lib/errors";
-import { rateLimit, resetRateLimit } from "@/lib/rate-limit";
+import { resetRateLimit } from "@/lib/rate-limit";
+import { guard } from "@/lib/security/protect";
 import { accessibleDepartmentIds } from "@/lib/access";
 import { validatePasswordStrength } from "@/lib/password-utils";
 
@@ -44,18 +45,15 @@ export async function loginUser(data) {
     if (!email || !password) throw invalid("Email and password are required.");
 
     const ip = await clientIp();
-    const limitKey = `login:${ip}:${email}`;
-    const limit = rateLimit(limitKey, { limit: 8, windowMs: 15 * 60 * 1000 });
-    if (!limit.allowed) {
-      throw forbidden(`Too many sign-in attempts. Try again in ${Math.ceil(limit.retryAfterMs / 60000)} minute(s).`);
-    }
+    const check = await guard("login", { ip, account: email });
+    if (!check.allowed) throw forbidden(check.message);
 
     const user = await db.user.findUnique({ where: { email } });
     const ok = user ? await verifyPassword(password, user.passwordHash) : false;
     if (!user || !ok) throw unauthorized("Invalid email or password.");
     if (!user.isActive) throw forbidden("This account has been deactivated. Please contact your manager.");
 
-    resetRateLimit(limitKey);
+    if (check.key) resetRateLimit(check.key);
     await startSession(user);
 
     return {
@@ -79,8 +77,8 @@ export async function registerBoss(data) {
     if (weak) throw invalid(weak);
 
     const ip = await clientIp();
-    const limit = rateLimit(`register:${ip}`, { limit: 5, windowMs: 60 * 60 * 1000 });
-    if (!limit.allowed) throw forbidden("Too many registrations from this network. Try again later.");
+    const check = await guard("register", { ip, email });
+    if (!check.allowed) throw forbidden(check.message);
 
     const existing = await db.user.findUnique({ where: { email } });
     if (existing) throw invalid("An account with this email already exists.");
@@ -129,6 +127,8 @@ export async function updatePassword(data) {
     if (!currentPassword || !newPassword) throw invalid("Current and new password are required.");
     const weak = validatePasswordStrength(newPassword);
     if (weak) throw invalid(weak);
+    const check = await guard("password", { ip: await clientIp(), account: user.id });
+    if (!check.allowed) throw forbidden(check.message);
     if (!(await verifyPassword(currentPassword, user.passwordHash))) throw invalid("Incorrect current password.");
 
     const cookieStore = await cookies();

@@ -55,3 +55,6 @@ next-env.d.ts
 /_db-backup-*/
 /_db-tools/
 /_backup_before_update_*.zip
+
+# one-off update folders copied into the project
+/_update-*/

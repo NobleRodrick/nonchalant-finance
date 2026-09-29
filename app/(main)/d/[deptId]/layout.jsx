@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Eye } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { db } from "@/lib/prisma";
+import { findOrgDepartment } from "@/lib/access";
 
 /**
  * Department pages. The Boss sees them read-only (oversight): the department head and staff
@@ -11,7 +11,7 @@ export default async function DepartmentLayout({ children, params }) {
   const { deptId } = await params;
   const user = await getCurrentUser();
   if (user?.role !== "ADMIN") return children;
-  const department = await db.department.findFirst({ where: { id: deptId, organizationId: user.organizationId }, select: { name: true } });
+  const department = await findOrgDepartment(user.organizationId, deptId);
   if (!department) return children;
   return (
     <>

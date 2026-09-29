@@ -48,7 +48,7 @@ describe.skipIf(!hasDb)("accounts: sign in, passwords, profile", () => {
 
   it("blocks repeated wrong passwords for a while", async () => {
     for (let i = 0; i < 8; i++) await loginUser({ email: o.accountant.email, password: `Nope${i}12345` });
-    fails(await loginUser({ email: o.accountant.email, password: o.password }), /Too many sign-in attempts/);
+    fails(await loginUser({ email: o.accountant.email, password: o.password }), /Too many attempts/);
   });
 
   it("changes the password (current one required, strength checked) and the profile", async () => {

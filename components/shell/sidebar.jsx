@@ -16,6 +16,11 @@ import { Button } from "@/components/ui/button";
 import { logoutUser } from "@/actions/auth";
 import { markNotificationsRead } from "@/actions/notifications";
 import { cn } from "@/lib/utils";
+import { NavigationProgress, startNavigationProgress } from "./navigation-progress";
+import { OfflineProvider, postToServiceWorker } from "@/components/offline/offline-provider";
+import { OfflineBanner, SyncStatus } from "@/components/offline/sync-status";
+import { useOutboxCounts } from "@/lib/offline/react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const ICONS = {
   ArrowLeftRight, Bell, BookUser, Building2, FileCheck2, FileText, Gauge, HandCoins, History, LayoutDashboard, LineChart,
@@ -89,7 +94,7 @@ function DepartmentCard({ department, departments }) {
             {i > 0 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuLabel className="text-xs text-slate-500">{label}</DropdownMenuLabel>
             {list.map((d) => (
-              <DropdownMenuItem key={d.id} onClick={() => router.push(`/d/${d.id}`)} className="flex items-center justify-between">
+              <DropdownMenuItem key={d.id} onClick={() => { startNavigationProgress(); router.push(`/d/${d.id}`); }} className="flex items-center justify-between">
                 <span className="truncate">{d.name}</span>
                 {d.id === department.id ? <Check className="h-4 w-4" /> : null}
               </DropdownMenuItem>
@@ -101,12 +106,20 @@ function DepartmentCard({ department, departments }) {
   );
 }
 
-function Notifications({ data }) {
+function Notifications({ data: server }) {
   const router = useRouter();
-  // Navigate first: marking as read refreshes the page, which must not cancel the navigation.
+  // Read on this screen at once (the server is told in the background).
+  const [readIds, setReadIds] = useState(() => new Set());
+  const [allRead, setAllRead] = useState(false);
+  const items = server.items.map((n) => ({ ...n, read: n.read || allRead || readIds.has(n.id) }));
+  const data = { items, unread: allRead ? 0 : Math.max(0, server.unread - server.items.filter((n) => !n.read && readIds.has(n.id)).length) };
   const open = (n) => {
+    startNavigationProgress();
     router.push(n.href);
-    if (!n.read) markNotificationsRead({ id: n.id }).catch(() => {});
+    if (!n.read) {
+      setReadIds((s) => new Set([...s, n.id]));
+      markNotificationsRead({ id: n.id }).catch(() => {});
+    }
   };
   return (
     <DropdownMenu>
@@ -122,7 +135,7 @@ function Notifications({ data }) {
         <div className="flex items-center justify-between px-2 py-1.5">
           <span className="text-sm font-semibold">Notifications</span>
           {data.unread ? (
-            <button type="button" className="text-xs text-slate-500 hover:text-slate-900" onClick={async () => { await markNotificationsRead({}); router.refresh(); }}>
+            <button type="button" className="text-xs text-slate-500 hover:text-slate-900" onClick={() => { setAllRead(true); markNotificationsRead({}).catch(() => {}); }}>
               Mark all as read
             </button>
           ) : null}
@@ -146,7 +159,15 @@ function Notifications({ data }) {
   );
 }
 
-export function Sidebar({ user, organizationName, departments, lastDepartmentId, boss, canStatements, notifications, businessDate, children }) {
+export function Sidebar(props) {
+  return (
+    <OfflineProvider userId={props.user.id} userName={props.user.name} timeZone={props.timeZone} warmUrls={props.warmUrls}>
+      <Shell {...props} />
+    </OfflineProvider>
+  );
+}
+
+function Shell({ user, organizationName, departments, lastDepartmentId, boss, canStatements, notifications, businessDate, children }) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -163,7 +184,16 @@ export function Sidebar({ user, organizationName, departments, lastDepartmentId,
     return pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  const logout = async () => {
+  const counts = useOutboxCounts();
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const logout = async (force = false) => {
+    // Records not sent yet stay on this computer (sent at the next sign-in): say so first.
+    if (!force && counts.waiting + counts.attention > 0) {
+      setConfirmLogout(true);
+      return;
+    }
+    setConfirmLogout(false);
+    await postToServiceWorker({ type: "purge-pages" }).catch(() => {});
     await logoutUser();
     router.push("/login");
     router.refresh();
@@ -251,7 +281,7 @@ export function Sidebar({ user, organizationName, departments, lastDepartmentId,
                 <User className="h-4 w-4" /> Profile & password
               </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={logout} className="text-rose-700">
+            <DropdownMenuItem onClick={() => logout(false)} className="text-rose-700">
               <LogOut className="h-4 w-4" /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -262,6 +292,7 @@ export function Sidebar({ user, organizationName, departments, lastDepartmentId,
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <NavigationProgress />
       {/* Fixed sidebar (desktop) */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 lg:block print:hidden">{nav}</aside>
 
@@ -285,12 +316,28 @@ export function Sidebar({ user, organizationName, departments, lastDepartmentId,
           </Button>
           <div className="min-w-0 truncate text-sm text-slate-500 lg:hidden">{active?.name || organizationName}</div>
           <div className="ml-auto flex items-center gap-2">
+            <SyncStatus />
             <span className="hidden text-sm text-slate-500 sm:inline">{businessDate}</span>
             <Notifications data={notifications} />
           </div>
         </header>
+        <OfflineBanner />
         <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:p-0">{children}</main>
       </div>
+      <Dialog open={confirmLogout} onOpenChange={setConfirmLogout}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Records not sent yet</DialogTitle>
+            <DialogDescription>
+              {counts.waiting + counts.attention} record(s) made on this computer are not on the server yet. They stay on this computer and are sent the next time you sign in here.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setConfirmLogout(false)}>Stay signed in</Button>
+            <Button variant="destructive" onClick={() => logout(true)}>Sign out</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, inputClass, selectClass, textareaClass, Money, Plates, StatusBadge } from "@/components/kit/primitives";
-import { runWithToast, useIdempotencyKey, wholeNumber } from "@/components/kit/client";
+import { wholeNumber } from "@/components/kit/client";
 import { ProofUpload } from "@/components/kit/proof-upload";
 import { VoidButton } from "@/components/kit/void-button";
 import { formatMoney } from "@/lib/format";
-import {
-  addDish, editDish, addStockToDish, correctDishCount, setDayOpeningStock, getDishHistory, voidStockRecord,
-} from "@/actions/menu-stock";
+import { toDateKey } from "@/lib/timezone";
+import { getDishHistory } from "@/actions/menu-stock";
+import { useRecorder } from "@/lib/offline/react";
+import { correctSpec, dishCreateSpec, dishUpdateSpec, openingSpec, stockAddSpec, stockVoidSpec } from "@/lib/offline/specs";
 
 function DialogShell({ open, onOpenChange, title, description, children, footer, wide = false }) {
   return (
@@ -40,19 +40,18 @@ function SubmitButton({ busy, disabled, children, onClick }) {
 
 // ─── Add dish ────────────────────────────────────────────────────────────────
 export function AddDishDialog({ open, onOpenChange, departmentId }) {
-  const router = useRouter();
+  const record = useRecorder();
   const [f, setF] = useState({ name: "", unitPrice: "", openingPlates: "", description: "", lowStockLevel: "" });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: k === "name" || k === "description" ? e.target.value : wholeNumber(e.target.value) });
   const valid = f.name.trim().length >= 2 && Number(f.unitPrice) > 0;
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(addDish({ departmentId, ...f, openingPlates: f.openingPlates || 0 }), { success: `"${f.name.trim()}" added to the menu.` });
+    const ok = await record(dishCreateSpec({ departmentId, name: f.name.trim(), unitPrice: f.unitPrice, openingPlates: f.openingPlates || 0, description: f.description, lowStockLevel: f.lowStockLevel }), { success: `"${f.name.trim()}" added to the menu.` });
     setBusy(false);
     if (ok) {
       setF({ name: "", unitPrice: "", openingPlates: "", description: "", lowStockLevel: "" });
       onOpenChange(false);
-      router.refresh();
     }
   };
   return (
@@ -98,19 +97,16 @@ export function AddDishDialog({ open, onOpenChange, departmentId }) {
 
 // ─── Edit dish ───────────────────────────────────────────────────────────────
 export function EditDishDialog({ open, onOpenChange, departmentId, dish }) {
-  const router = useRouter();
+  const record = useRecorder();
   const [f, setF] = useState(() => (dish ? { name: dish.name, unitPrice: dish.unitPrice, description: dish.description || "", lowStockLevel: dish.lowStockLevel || "", costPrice: dish.costPrice || "" } : null));
   const [busy, setBusy] = useState(false);
   if (!dish || !f) return null;
   const set = (k) => (e) => setF({ ...f, [k]: ["name", "description"].includes(k) ? e.target.value : wholeNumber(e.target.value) });
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(editDish({ departmentId, id: dish.dishId, ...f }), { success: "Dish updated." });
+    const ok = await record(dishUpdateSpec({ departmentId, id: dish.dishId, name: f.name, patch: { ...f } }), { success: "Dish updated." });
     setBusy(false);
-    if (ok) {
-      onOpenChange(false);
-      router.refresh();
-    }
+    if (ok) onOpenChange(false);
   };
   return (
     <DialogShell
@@ -150,9 +146,8 @@ export function EditDishDialog({ open, onOpenChange, departmentId, dish }) {
 
 // ─── Add stock ───────────────────────────────────────────────────────────────
 export function AddStockDialog({ open, onOpenChange, departmentId, dishes, initialDishId, dateKey, canBuy }) {
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
-  const blank = { dishId: initialDishId || "", newName: "", newPrice: "", plates: "", bought: false, amountPaid: "", supplier: "", paymentMethod: "CASH", note: "", attachmentIds: [] };
+  const record = useRecorder();
+  const blank = { dishId: initialDishId || "", newName: "", newPrice: "", plates: "", bought: false, amountPaid: "", supplier: "", paymentMethod: "CASH", note: "", files: [] };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   const isNew = f.dishId === "__new";
@@ -162,20 +157,16 @@ export function AddStockDialog({ open, onOpenChange, departmentId, dishes, initi
   const valid = plates > 0 && (isNew ? f.newName.trim().length >= 2 && Number(f.newPrice) > 0 : Boolean(dish)) && (!f.bought || Number(f.amountPaid) > 0);
   const submit = async () => {
     setBusy(true);
-    const payload = {
-      departmentId, dateKey, plates, note: f.note, idempotencyKey: key,
-      ...(isNew ? { newDish: { name: f.newName, unitPrice: f.newPrice } } : { dishId: f.dishId }),
-      ...(f.bought ? { bought: true, amountPaid: f.amountPaid, supplier: f.supplier, paymentMethod: f.paymentMethod, attachmentIds: f.attachmentIds } : {}),
-    };
-    const ok = await runWithToast(addStockToDish(payload), {
+    const spec = stockAddSpec({
+      departmentId, dateKey, plates, note: f.note,
+      dishId: isNew ? null : f.dishId, dishName: isNew ? f.newName : dish?.name, newDish: isNew ? { name: f.newName, unitPrice: Number(f.newPrice) } : null,
+      bought: f.bought, amountPaid: f.amountPaid, supplier: f.supplier, paymentMethod: f.paymentMethod,
+    });
+    const ok = await record({ ...spec, files: f.bought ? f.files : [] }, {
       success: (d) => `${plates} plate(s) added${d.movement?.referenceNo ? ` (${d.movement.referenceNo})` : ""}${d.purchase ? ` · purchase ${d.purchase.referenceNo}` : ""}.`,
     });
     setBusy(false);
-    if (ok) {
-      renew();
-      onOpenChange(false);
-      router.refresh();
-    }
+    if (ok) onOpenChange(false);
   };
   const set = (k, num = false) => (e) => setF({ ...f, [k]: num ? wholeNumber(e.target.value) : e.target.value });
   return (
@@ -238,7 +229,7 @@ export function AddStockDialog({ open, onOpenChange, departmentId, dishes, initi
                 <input id="stock-supplier" className={inputClass} value={f.supplier} onChange={set("supplier")} placeholder="Who sold it (optional)" />
               </Field>
               <div className="sm:col-span-2">
-                <ProofUpload departmentId={departmentId} value={f.attachmentIds} onChange={(ids) => setF({ ...f, attachmentIds: ids })} label="Attach the receipt (optional)" />
+                <ProofUpload value={f.files} onChange={(files) => setF({ ...f, files })} label="Attach the receipt (optional)" />
               </div>
             </div>
           ) : null}
@@ -266,7 +257,7 @@ const REASONS = [
 ];
 
 export function CorrectCountDialog({ open, onOpenChange, departmentId, dishes, initialDishId, dateKey, isToday }) {
-  const router = useRouter();
+  const record = useRecorder();
   const [f, setF] = useState({ dishId: initialDishId || "", counted: "", reasonType: "COUNT", reasonText: "" });
   const [busy, setBusy] = useState(false);
   const dish = dishes.find((d) => d.dishId === f.dishId);
@@ -275,12 +266,9 @@ export function CorrectCountDialog({ open, onOpenChange, departmentId, dishes, i
   const valid = dish && f.counted !== "" && diff !== 0 && (f.reasonType !== "OTHER" || f.reasonText.trim()) && !(f.reasonType === "SPOILED" && diff > 0);
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(correctDishCount({ departmentId, dateKey, ...f }), { success: "Count corrected." });
+    const ok = await record(correctSpec({ departmentId, dateKey, dishId: f.dishId, name: dish.name, counted: f.counted, current: expected, reasonType: f.reasonType, reasonText: f.reasonText }), { success: "Count corrected." });
     setBusy(false);
-    if (ok) {
-      onOpenChange(false);
-      router.refresh();
-    }
+    if (ok) onOpenChange(false);
   };
   return (
     <DialogShell
@@ -337,7 +325,7 @@ export function CorrectCountDialog({ open, onOpenChange, departmentId, dishes, i
 
 // ─── Opening stock ───────────────────────────────────────────────────────────
 export function OpeningStockDialog({ open, onOpenChange, departmentId, rows, dateKey, dateLabel }) {
-  const router = useRouter();
+  const record = useRecorder();
   const active = useMemo(() => rows.filter((r) => r.isActive), [rows]);
   const [values, setValues] = useState(() => Object.fromEntries(rows.filter((r) => r.isActive).map((r) => [r.dishId, String(r.opening)])));
   const [reason, setReason] = useState("");
@@ -345,15 +333,11 @@ export function OpeningStockDialog({ open, onOpenChange, departmentId, rows, dat
   const changed = active.filter((r) => values[r.dishId] !== undefined && values[r.dishId] !== "" && Number(values[r.dishId]) !== r.opening);
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(
-      setDayOpeningStock({ departmentId, dateKey, reason, entries: changed.map((r) => ({ dishId: r.dishId, actual: Number(values[r.dishId]) })) }),
-      { success: `Opening stock updated for ${changed.length} dish(es).` }
-    );
+    const ok = await record(openingSpec({ departmentId, dateKey, reason, entries: changed.map((r) => ({ dishId: r.dishId, name: r.name, actual: Number(values[r.dishId]), opening: r.opening })) }), {
+      success: `Opening stock updated for ${changed.length} dish(es).`,
+    });
     setBusy(false);
-    if (ok) {
-      onOpenChange(false);
-      router.refresh();
-    }
+    if (ok) onOpenChange(false);
   };
   return (
     <DialogShell
@@ -421,11 +405,23 @@ const MOVE_LABELS = {
   OPENING_CORRECTION: "Opening stock set", REVERSAL: "Reversal", PREPARATION: "Stock added", USAGE: "Sold", WASTE: "Spoiled", DAMAGE: "Spoiled", ADJUSTMENT: "Count corrected", PURCHASE: "Stock added",
 };
 
+const COLUMN = { STOCK_ADDED: "added", CORRECTION: "corrected", SPOILED: "spoiled", OPENING_CORRECTION: "openingCorrection" };
+
 export function DishHistoryDialog({ open, onOpenChange, departmentId, dish, canManage }) {
+  const record = useRecorder();
   const [rows, setRows] = useState(null);
+  const [error, setError] = useState(null);
   useEffect(() => {
     let alive = true;
-    if (dish) getDishHistory({ departmentId, dishId: dish.dishId }).then((res) => alive && setRows(res?.success ? res.data : []));
+    if (dish) {
+      getDishHistory({ departmentId, dishId: dish.dishId })
+        .then((res) => alive && setRows(res?.success ? res.data : []))
+        .catch(() => {
+          if (!alive) return;
+          setError("No connection: the history opens when the connection is back.");
+          setRows([]);
+        });
+    }
     return () => {
       alive = false;
     };
@@ -436,7 +432,7 @@ export function DishHistoryDialog({ open, onOpenChange, departmentId, dish, canM
       {rows === null ? (
         <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>
       ) : rows.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-500">No stock changes yet.</p>
+        <p className="py-6 text-center text-sm text-slate-500">{error || "No stock changes yet."}</p>
       ) : (
         <div className="max-h-[60vh] overflow-y-auto">
           <table className="w-full text-sm">
@@ -468,7 +464,18 @@ export function DishHistoryDialog({ open, onOpenChange, departmentId, dish, canM
                     <td className="px-2 py-2 text-right tabular-nums">{Number(m.balanceAfter ?? 0)}</td>
                     <td className="px-2 py-2 text-xs">{m.user?.name}</td>
                     <td className="px-2 py-2 text-right">
-                      {voidable ? <VoidButton what="stock record" reference={ref} action={(reason) => voidStockRecord({ departmentId, movementId: m.id, reason })} /> : null}
+                      {voidable ? (
+                        <VoidButton
+                          what="stock record"
+                          reference={ref}
+                          onVoid={(reason) =>
+                            record(stockVoidSpec({ departmentId, dateKey: toDateKey(new Date(m.date)), movementId: m.id, dishId: dish.dishId, column: COLUMN[m.type], quantity: q, reason, label: ref }), { success: `${ref || "Stock record"} voided.` }).then((ok) => {
+                              if (ok) onOpenChange(false);
+                              return ok;
+                            })
+                          }
+                        />
+                      ) : null}
                     </td>
                   </tr>
                 );

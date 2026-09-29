@@ -1,27 +1,32 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, CloudOff, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, Money, Section, StatusBadge, textareaClass } from "@/components/kit/primitives";
-import { runWithToast } from "@/components/kit/client";
-import { reviewHandover } from "@/actions/handovers";
+import { useOutboxOps, useRecorder } from "@/lib/offline/react";
+import { STATUS } from "@/lib/offline/status";
 
-export function CashReceived({ pending, recent, perDept, monthLabel }) {
-  const router = useRouter();
+export function CashReceived({ pending: serverPending, recent, perDept, monthLabel }) {
+  const record = useRecorder();
+  const ops = useOutboxOps();
   const [busy, setBusy] = useState(null);
   const [dispute, setDispute] = useState(null);
   const [note, setNote] = useState("");
+  // Confirmations made offline: shown as decided, sent when the connection is back.
+  const decided = new Map(ops.filter((o) => o.kind === "handover.review" && (o.status === STATUS.PENDING || o.status === STATUS.SENDING)).map((o) => [o.input?.handoverId, o.input?.status]));
+  const pending = serverPending.map((h) => (decided.has(h.id) ? { ...h, decision: decided.get(h.id) } : h));
   const act = async (h, status, reviewNote = null) => {
     setBusy(h.id);
-    const ok = await runWithToast(reviewHandover({ handoverId: h.id, status, note: reviewNote }), { success: status === "CONFIRMED" ? `${h.referenceNo} confirmed.` : `${h.referenceNo} disputed.` });
+    const ok = await record(
+      { kind: "handover.review", label: status === "CONFIRMED" ? "Handover confirmed" : "Handover disputed", departmentId: null, input: { handoverId: h.id, status, note: reviewNote }, meta: { summary: `${h.referenceNo} · ${h.department}` } },
+      { success: status === "CONFIRMED" ? `${h.referenceNo} confirmed.` : `${h.referenceNo} disputed.` }
+    );
     setBusy(null);
     if (ok) {
       setDispute(null);
       setNote("");
-      router.refresh();
     }
   };
   return (
@@ -37,10 +42,14 @@ export function CashReceived({ pending, recent, perDept, monthLabel }) {
                   <div className="font-semibold">{h.department} · <Money value={h.amount} /></div>
                   <div className="text-xs text-slate-500">{h.referenceNo} · {h.when} · by {h.by} · to {h.recipient}{h.reference ? ` · ref ${h.reference}` : ""}</div>
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => act(h, "CONFIRMED")} disabled={busy === h.id}>{busy === h.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} I received it</Button>
-                  <Button size="sm" variant="outline" onClick={() => setDispute(h)}><X className="h-4 w-4" /> Dispute</Button>
-                </div>
+                {h.decision ? (
+                  <span className="inline-flex items-center gap-1 text-sm text-amber-800"><CloudOff className="h-4 w-4" /> {h.decision === "CONFIRMED" ? "Confirmed" : "Disputed"} on this computer, not sent yet</span>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => act(h, "CONFIRMED")} disabled={busy === h.id}>{busy === h.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} I received it</Button>
+                    <Button size="sm" variant="outline" onClick={() => setDispute(h)}><X className="h-4 w-4" /> Dispute</Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

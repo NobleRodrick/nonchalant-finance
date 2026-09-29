@@ -14,9 +14,11 @@
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:offline": "next build --webpack && playwright test -c playwright.offline.config.mjs"
   },
   "dependencies": {
+    "@arcjet/next": "^1.13.0",
     "@google/generative-ai": "^0.24.1",
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.19.0",

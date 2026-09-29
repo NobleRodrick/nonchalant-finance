@@ -30,14 +30,15 @@ Every figure of the hand-computed day is asserted through the real server action
 (`tests/integration/reference-day.test.js`) and again through the browser (`e2e/restaurant-day.spec.mjs`):
 money in 77 000, money out 19 000, result 58 000, cash variance −500, stock value 27 000, debts 11 000 FCFA.
 
-## Test totals (27 Sep 2026)
+## Test totals (29 Sep 2026)
 
 | Suite | Result |
 |---|---|
-| Unit (`tests/unit`) | 23 passed |
-| Integration (`tests/integration`, 8 files) | 64 passed: department head, reference day, operations, cash requests, insights, and platform (sign-in, passwords, people, settings, accounting periods, attachments, notifications, record details, scheduled jobs) |
-| End-to-end (`e2e`, desktop + phone) | 20 passed: restaurant day, every page for the Boss, a head of one department and a head of two departments (with accessibility checks), navigation, the Boss manages heads and departments, homepage |
-| Real data | The production copy (all migrations applied) opened by each real account: 108 page visits, no error |
+| Unit (`tests/unit`, 5 files) | 37 passed: money, stock, format and time, abuse protection, offline overlays and local ids |
+| Integration (`tests/integration`, 7 files) | 79 passed: department head, reference day, operations, cash requests, insights, platform, and offline sync (a whole offline session, replay, races, dating, refusals and dependents, locked day, permissions, proof files) |
+| End-to-end (`e2e`, desktop + phone) | 28 passed (+2 skipped by design): restaurant day, every page for every role (accessibility checks), navigation, the Boss manages, undo a sale |
+| Offline end-to-end (`e2e-offline`, production build) | 3 passed: the server is stopped for real; sell, undo, expense with a receipt photo, reload, pages from the service worker, sync with reference numbers; a refused record needs attention; the Boss confirms cash offline |
+| Real data | The production copy with the new migration applied (additive, no error) |
 | `npm run lint`, `npm run build` | clean |
 
 ## Boss and department heads (27 Sep 2026)
@@ -54,6 +55,18 @@ money in 77 000, money out 19 000, result 58 000, cash variance −500, stock va
 - A person heads every department they are assigned to (one or several); the Boss adds or removes heads from the department cards, in People (tick the departments, star the one that opens first) and during setup. A head keeps at least one department.
 - Heads hold every operating permission (sales, stock, money, debts, voids, cash to the Boss, daily report); the Boss oversees and manages. Titles never change permissions.
 - Screens: the "Department head" tag and the title everywhere (People, department cards, the department home, the sidebar, the profile); "My departments" shows a head's departments with today's money in, result, report status and the Boss's cash requests. Tests: `tests/integration/department-head.test.js`, e2e "A head of two departments".
+
+## Speed and offline (29 Sep 2026)
+
+- **Speed:** functions in Stockholm next to the database (`vercel.json`), loading screens for every section and a
+  progress bar, one user / department lookup per request, parallel queries (Menu & Stock, Boss overview, statements),
+  four indexes, lighter polling, slow-query logs, Speed Insights. Refused pages keep real 404 / redirect statuses.
+- **Offline:** every write is a named operation (`lib/operations`) run once per key in the same transaction as its
+  `sync_operations` row; the head's forms save to an outbox (IndexedDB) and a sync engine sends it in order
+  (`/api/sync`), with dependencies between records made offline (`$ref`), dating by device time, retries, a
+  "needs attention" list, proof photos uploaded later; every board shows the unsent records in its figures
+  (`lib/offline/overlay`); a service worker opens the pages without internet. The Boss's approvals, handover
+  confirmations and cash requests are queued too. Details: `docs/OFFLINE_AND_PERFORMANCE.md`.
 
 ## Differences from the plan
 

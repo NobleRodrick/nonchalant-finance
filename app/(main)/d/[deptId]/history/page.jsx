@@ -34,6 +34,7 @@ export default async function HistoryPage({ params, searchParams }) {
         todayKey={todayKey}
         rows={serialize(history.rows)}
         totals={history.totals}
+        canUndo={perms.void}
       />
     </div>
   );

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Offline · Springer Finance</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; background: #f8fafc; color: #0f172a; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      main { width: 100%; max-width: 480px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 28px; box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); }
+      .badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: #fef3c7; color: #92400e; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+      h1 { font-size: 20px; margin: 12px 0 6px; }
+      p { color: #475569; margin: 0 0 12px; }
+      ul { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 6px; }
+      a { display: block; border: 1px solid #e2e8f0; border-radius: 10px; padding: 9px 12px; color: #0f172a; text-decoration: none; }
+      a:hover { background: #f1f5f9; }
+      small { color: #64748b; }
+      button { margin-top: 16px; border: 0; border-radius: 10px; background: #0f172a; color: #fff; padding: 10px 14px; font: inherit; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="badge">● No connection</span>
+      <h1>This page is not saved on this computer yet</h1>
+      <p>Pages open without internet once they were opened here with a connection. Everything you record offline is kept on this computer and sent when the connection is back.</p>
+      <p id="has-pages" hidden>Pages you can open now:</p>
+      <ul id="pages"></ul>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+    <script>
+      (async function () {
+        try {
+          const cache = await caches.open("sf-pages-v1");
+          const keys = await cache.keys();
+          const names = { "": "Department home", sell: "Sell", "menu-stock": "Menu & Stock", money: "Money in / out", debts: "Debts", "cash-handover": "Cash to Boss", report: "Today's report", history: "History" };
+          const list = document.getElementById("pages");
+          const items = keys
+            .map((k) => new URL(k.url))
+            .filter((u) => u.origin === location.origin && !u.search)
+            .map((u) => {
+              const parts = u.pathname.split("/").filter(Boolean);
+              let label = u.pathname;
+              if (parts[0] === "d") label = names[parts[2] || ""] || label;
+              else if (parts[0] === "boss") label = "Boss · " + (parts[1] || "overview");
+              else label = parts.join(" / ") || "Home";
+              return { href: u.pathname, label: label };
+            });
+          if (items.length) document.getElementById("has-pages").hidden = false;
+          for (const it of items) {
+            const li = document.createElement("li");
+            const a = document.createElement("a");
+            a.href = it.href;
+            a.textContent = it.label;
+            const s = document.createElement("small");
+            s.textContent = " " + it.href;
+            a.appendChild(s);
+            li.appendChild(a);
+            list.appendChild(li);
+          }
+        } catch (e) {}
+        window.addEventListener("online", function () { location.reload(); });
+      })();
+    </script>
+  </body>
+</html>

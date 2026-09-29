@@ -18,7 +18,7 @@ export default async function CashHandoverPage({ params }) {
   // The Boss receives cash; he does not hand it over. His view is Boss → Cash received.
   const viewer = await requirePageUser();
   if (viewer.role === "ADMIN") redirect(`/boss/cash?dept=${deptId}`);
-  const { user, department, perms } = await departmentPage(deptId, { module: "cash" });
+  const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "cash" });
   const { todayKey, isToday, timeZone } = pageDate(user, null);
   const [drawer, handovers, status, requests] = await Promise.all([
     drawerNow(db, { organizationId: user.organizationId, departmentId: department.id, timeZone }),
@@ -34,6 +34,9 @@ export default async function CashHandoverPage({ params }) {
       <CashBoard
         departmentId={department.id}
         departmentName={department.name}
+        todayKey={todayKey}
+        renderedAt={renderedAt}
+        locked={status.locked}
         canHandOver={perms.handover && !status.locked}
         canVoid={perms.void && !status.locked}
         drawer={serialize(drawer)}

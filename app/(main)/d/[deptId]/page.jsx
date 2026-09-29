@@ -4,20 +4,21 @@ import { departmentPage, pageDate } from "@/lib/page-guards";
 import { buildDailyReport } from "@/lib/reports/daily-report";
 import { summarizeMoney } from "@/lib/finance/money-math";
 import { listCashRequests } from "@/lib/finance/cash-requests";
-import { countOf, formatMoney } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { addDaysToKey, listDateKeys, rangeBounds, toDateKey, formatDateKey } from "@/lib/timezone";
 import { serialize } from "@/lib/serialize";
-import { Money, PageHeader, Plates, Section, StatCard, StatusBadge } from "@/components/kit/primitives";
+import { PageHeader, Section, StatusBadge } from "@/components/kit/primitives";
+import { DepartmentStats, SalesByDish } from "@/components/restaurant/department-figures";
 import { ComingSoon } from "@/components/domains/coming-soon";
 import { MoneyBars } from "@/components/charts/money-bars";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, ArrowLeftRight, BookUser, Boxes, CheckCircle2, Circle, FileText, HandCoins, ShoppingCart, Users, Wallet } from "lucide-react";
+import { AlertTriangle, Boxes, CheckCircle2, Circle, FileText, ShoppingCart, Users, Wallet } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function DepartmentHome({ params }) {
   const { deptId } = await params;
-  const { user, department, domain, perms } = await departmentPage(deptId);
+  const { user, department, domain, perms, renderedAt } = await departmentPage(deptId);
   if (!domain.enabled) {
     const people = await db.user.findMany({ where: { memberships: { some: { departmentId: department.id, isActive: true } } }, select: { name: true } });
     return <ComingSoon department={department} domain={domain} people={people.map((p) => p.name)} />;
@@ -39,6 +40,8 @@ export default async function DepartmentHome({ params }) {
     return { dateKey: k, moneyIn: m.moneyIn, moneyOut: m.moneyOut, result: m.result };
   });
   const base = `/d/${department.id}`;
+  // What the figure cards need (the page adds this computer's unsent records on top).
+  const figures = serialize({ money: r.money, stock: { rows: r.stock.rows, totals: r.stock.totals }, cash: r.cash, debts: r.debts, sales: r.sales, status: r.status, locked: r.locked });
   const out = r.stock.rows.filter((x) => x.isActive && x.closing <= 0);
   const todo = [
     perms.manageStock ? { done: r.stock.rows.length > 0, text: r.stock.rows.length ? `${r.stock.totals.dishes} dishes on the menu` : "Add your dishes and their plates", href: `${base}/menu-stock` } : null,
@@ -64,14 +67,13 @@ export default async function DepartmentHome({ params }) {
           </>
         }
       />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6">
-        <StatCard label="Money in" value={<Money value={r.money.moneyIn} />} tone="in" href={perms.reportRead ? `${base}/money` : undefined} icon={ArrowLeftRight} />
-        <StatCard label="Money out" value={<Money value={r.money.moneyOut} />} tone="out" href={perms.reportRead ? `${base}/money` : undefined} />
-        <StatCard label="Result" value={<Money value={r.money.result} />} tone="dark" />
-        <StatCard label="Stock value" value={<Money value={r.stock.totals.value} />} hint={<><Plates value={r.stock.totals.closing} /> plates</>} href={`${base}/menu-stock`} icon={Boxes} />
-        <StatCard label="Cash in the drawer" value={<Money value={r.cash.shouldRemain} />} hint={r.cash.handedOver ? <>Handed to Boss <Money value={r.cash.handedOver} /></> : "Nothing handed over yet"} href={perms.handover ? `${base}/cash-handover` : undefined} icon={HandCoins} />
-        <StatCard label="Owed by customers" value={<Money value={r.debts.closing} />} hint={r.debts.given ? <>+<Money value={r.debts.given} /> today</> : null} href={`${base}/debts`} icon={BookUser} />
-      </div>
+      <DepartmentStats
+        departmentId={department.id}
+        renderedAt={renderedAt}
+        dateKey={todayKey}
+        figures={figures}
+        links={{ money: perms.reportRead ? `${base}/money` : undefined, stock: `${base}/menu-stock`, cash: perms.handover ? `${base}/cash-handover` : undefined, debts: `${base}/debts` }}
+      />
       <div className="grid gap-6 xl:grid-cols-3">
         <Section title="Last 7 days" description="Money in and money out per day" className="xl:col-span-2">
           <MoneyBars data={serialize(series)} />
@@ -112,18 +114,7 @@ export default async function DepartmentHome({ params }) {
         )}
       </div>
       <Section title="Sales today by dish" actions={perms.sell ? <Link className="text-sm font-medium underline" href={`${base}/sell`}>Open Sell</Link> : null}>
-        {r.sales.byDish.length ? (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {r.sales.byDish.map((d) => (
-              <div key={d.dishId} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-sm">
-                <span>{d.name}</span>
-                <span className="text-slate-500">{countOf(d.plates, "plate")} · <Money value={d.gross} className="text-slate-900" /></span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-slate-500">No sales yet today.</p>
-        )}
+        <SalesByDish departmentId={department.id} renderedAt={renderedAt} dateKey={todayKey} figures={figures} />
       </Section>
       <p className="flex items-center gap-1 text-xs text-slate-400"><Wallet className="h-3.5 w-3.5" /> Figures update after every record.</p>
     </div>

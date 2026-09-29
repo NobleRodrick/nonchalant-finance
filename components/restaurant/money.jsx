@@ -1,18 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowDownLeft, ArrowUpRight, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, CloudOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, Money, StatCard, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
-import { runWithToast, useIdempotencyKey, useLiveRefresh, wholeNumber } from "@/components/kit/client";
+import { useLiveRefresh, wholeNumber } from "@/components/kit/client";
 import { ProofUpload } from "@/components/kit/proof-upload";
 import { VoidButton } from "@/components/kit/void-button";
-import { MONEY_CATEGORIES } from "@/data/categories";
+import { MONEY_CATEGORIES, categoryLabel } from "@/data/categories";
 import { formatMoney } from "@/lib/format";
-import { recordMoney, recordPurchase, voidRecord } from "@/actions/money";
+import { usePendingEffects, useRecorder } from "@/lib/offline/react";
+import { overlayDayStatus, overlayDishes, overlayMoneyRecords, overlayMoneySummary } from "@/lib/offline/overlay";
+import { moneySpec, purchaseSpec, voidSpec } from "@/lib/offline/specs";
 import { cn } from "@/lib/utils";
 
 const TYPES = {
@@ -24,23 +25,19 @@ const TYPES = {
 };
 
 function MoneyEntryDialog({ type, onClose, departmentId, dateKey }) {
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
+  const record = useRecorder();
   const cfg = TYPES[type];
   const cats = MONEY_CATEGORIES[type] || [];
-  const [f, setF] = useState({ amount: "", category: cats[0]?.id || "", paymentMethod: "CASH", counterparty: "", reference: "", description: "", attachmentIds: [] });
+  const [f, setF] = useState({ amount: "", category: cats[0]?.id || "", paymentMethod: "CASH", counterparty: "", reference: "", description: "", files: [] });
   const [busy, setBusy] = useState(false);
   if (!cfg) return null;
   const incoming = type === "RENT_INCOME" || type === "OTHER_INCOME";
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(recordMoney({ departmentId, dateKey, type, ...f, idempotencyKey: key }), { success: (d) => `${d.referenceNo} recorded: ${formatMoney(f.amount)}.` });
+    const spec = moneySpec({ departmentId, dateKey, type, amount: f.amount, category: f.category, categoryLabel: categoryLabel(f.category), paymentMethod: f.paymentMethod, counterparty: f.counterparty, reference: f.reference, description: f.description });
+    const ok = await record({ ...spec, files: f.files }, { success: (d) => `${d.referenceNo} recorded: ${formatMoney(f.amount)}.` });
     setBusy(false);
-    if (ok) {
-      renew();
-      onClose();
-      router.refresh();
-    }
+    if (ok) onClose();
   };
   return (
     <Dialog open={Boolean(type)} onOpenChange={(v) => !v && onClose()}>
@@ -82,7 +79,7 @@ function MoneyEntryDialog({ type, onClose, departmentId, dateKey }) {
               <input id="money-ref" className={inputClass} value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} placeholder="Optional" />
             </Field>
             <div className="flex items-end">
-              <ProofUpload departmentId={departmentId} value={f.attachmentIds} onChange={(ids) => setF({ ...f, attachmentIds: ids })} label="Attach proof" />
+              <ProofUpload value={f.files} onChange={(files) => setF({ ...f, files })} label="Attach proof" />
             </div>
           </div>
         </div>
@@ -98,9 +95,8 @@ function MoneyEntryDialog({ type, onClose, departmentId, dateKey }) {
 }
 
 function PurchaseDialog({ open, onClose, departmentId, dateKey, dishes, canAddPlates }) {
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
-  const blank = { supplier: "", category: "purchase-food", paymentMethod: "CASH", reference: "", notes: "", lines: [{ description: "", quantity: "1", totalCost: "" }], stockAdds: [], attachmentIds: [] };
+  const record = useRecorder();
+  const blank = { supplier: "", category: "purchase-food", paymentMethod: "CASH", reference: "", notes: "", lines: [{ description: "", quantity: "1", totalCost: "" }], stockAdds: [], files: [] };
   const [f, setF] = useState(blank);
   const [busy, setBusy] = useState(false);
   const total = f.lines.reduce((s, l) => s + (Number(l.totalCost) || 0), 0);
@@ -109,21 +105,15 @@ function PurchaseDialog({ open, onClose, departmentId, dateKey, dishes, canAddPl
   const setAdd = (i, patch) => setF({ ...f, stockAdds: f.stockAdds.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(
-      recordPurchase({
-        departmentId, dateKey, idempotencyKey: key, supplier: f.supplier, category: f.category, paymentMethod: f.paymentMethod, reference: f.reference, notes: f.notes,
-        lines: validLines.map((l) => ({ description: l.description, quantity: Number(l.quantity) || 1, totalCost: Number(l.totalCost) })),
-        stockAdds: f.stockAdds.filter((s) => s.dishId && Number(s.plates) > 0),
-        attachmentIds: f.attachmentIds,
-      }),
-      { success: (d) => `Purchase ${d.referenceNo} recorded: ${formatMoney(total)}.` }
-    );
+    const names = Object.fromEntries(dishes.map((d) => [d.id, d.name]));
+    const spec = purchaseSpec({
+      departmentId, dateKey, supplier: f.supplier, category: f.category, paymentMethod: f.paymentMethod, reference: f.reference, notes: f.notes,
+      lines: validLines.map((l) => ({ description: l.description, quantity: Number(l.quantity) || 1, totalCost: Number(l.totalCost) })),
+      stockAdds: f.stockAdds.filter((s) => s.dishId && Number(s.plates) > 0).map((s) => ({ ...s, name: names[s.dishId] })),
+    });
+    const ok = await record({ ...spec, files: f.files }, { success: (d) => `Purchase ${d.referenceNo} recorded: ${formatMoney(total)}.` });
     setBusy(false);
-    if (ok) {
-      renew();
-      onClose();
-      router.refresh();
-    }
+    if (ok) onClose();
   };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -195,7 +185,7 @@ function PurchaseDialog({ open, onClose, departmentId, dateKey, dishes, canAddPl
               <input id="p-ref" className={inputClass} value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} placeholder="Optional" />
             </Field>
             <div className="flex items-end">
-              <ProofUpload departmentId={departmentId} value={f.attachmentIds} onChange={(ids) => setF({ ...f, attachmentIds: ids })} label="Attach the receipt" />
+              <ProofUpload value={f.files} onChange={(files) => setF({ ...f, files })} label="Attach the receipt" />
             </div>
           </div>
         </div>
@@ -238,8 +228,15 @@ function Column({ title, tone, total, rows }) {
   );
 }
 
-export function MoneyBoard({ departmentId, dateKey, locked, perms, summary, records, dishes }) {
-  useLiveRefresh(30);
+export function MoneyBoard({ departmentId, dateKey, dayKey, renderedAt, locked: serverLocked, perms, summary: serverSummary, records: serverRecords, dishes: serverDishes }) {
+  useLiveRefresh(120);
+  const record = useRecorder();
+  const effects = usePendingEffects(departmentId, renderedAt);
+  const summary = useMemo(() => overlayMoneySummary(serverSummary, effects, { dateKey: dayKey }), [serverSummary, effects, dayKey]);
+  const records = useMemo(() => overlayMoneyRecords(serverRecords, effects, { dateKey: dayKey }), [serverRecords, effects, dayKey]);
+  const dishes = useMemo(() => overlayDishes(serverDishes, effects), [serverDishes, effects]);
+  const locked = overlayDayStatus({ locked: serverLocked }, effects, { dateKey: dayKey }).locked;
+  const voidRow = (r) => (reason) => record(voidSpec({ departmentId, dateKey: dayKey, row: r, type: r.type, reason }), { success: `${r.referenceNo} voided.` });
   const [entry, setEntry] = useState(null);
   const [purchase, setPurchase] = useState(false);
   const can = (p) => perms[p] && !locked;
@@ -300,8 +297,10 @@ export function MoneyBoard({ departmentId, dateKey, locked, perms, summary, reco
               </thead>
               <tbody>
                 {records.map((r) => (
-                  <tr key={r.id} className={cn("border-b border-slate-100 last:border-0", r.voided && "text-slate-400")}>
-                    <td className="px-4 py-2 font-medium">{r.referenceNo}</td>
+                  <tr key={r.id} className={cn("border-b border-slate-100 last:border-0", r.voided && "text-slate-400")} data-pending={r.pending ? "1" : undefined}>
+                    <td className="px-4 py-2 font-medium">
+                      {r.pending && !r.voided ? <span className="inline-flex items-center gap-1 text-amber-700" title="Saved on this computer, not on the server yet"><CloudOff className="h-3.5 w-3.5" /> Not sent yet</span> : r.referenceNo}
+                    </td>
                     <td className="px-3 py-2">{r.time}</td>
                     <td className="px-3 py-2">
                       <span className={cn("inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium", r.direction === "in" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800")}>
@@ -321,7 +320,7 @@ export function MoneyBoard({ departmentId, dateKey, locked, perms, summary, reco
                     <td className={cn("px-3 py-2 text-right font-medium", r.voided && "line-through")}><Money value={r.amount} tone={r.voided ? "none" : r.direction} /></td>
                     <td className="px-3 py-2 text-xs">{r.by}</td>
                     <td className="px-3 py-1 text-right">
-                      {r.voided ? <StatusBadge status="VOIDED" /> : perms.void && !locked ? <VoidButton reference={r.referenceNo} action={(reason) => voidRecord({ transactionId: r.id, reason })} /> : null}
+                      {r.voided ? <StatusBadge status="VOIDED" label={r.pending ? "Void (not sent)" : undefined} /> : perms.void && !locked ? <VoidButton reference={r.pending ? "this record" : r.referenceNo} onVoid={voidRow(r)} /> : null}
                     </td>
                   </tr>
                 ))}

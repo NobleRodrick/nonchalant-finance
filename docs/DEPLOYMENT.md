@@ -10,7 +10,8 @@ Nothing in this release was applied to the live database; these steps are yours 
 | `JWT_SECRET` | **New and required.** ≥ 32 random characters, same value locally and on the host. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. Changing it signs everyone out (old tokens were signed with a public default). |
 | `NODE_ENV` | Remove it from `.env`. Next.js sets it itself. |
 | `ALLOW_DEMO_SEED` | No longer used (the demo seed was removed); delete it. |
-| Clerk keys, `ARCJET_KEY` | No longer used; can be deleted. |
+| Clerk keys | No longer used; can be deleted. |
+| `ARCJET_KEY` | Production abuse protection (see the Vercel section). |
 | Duplicate `INNGEST_*` lines | Keep one pair (the production keys). |
 | `NEXT_PUBLIC_APP_URL`, `EMAIL_FROM`, `GEMINI_MODEL` | Optional (see `.env.example`). |
 
@@ -64,7 +65,7 @@ Log in as the Boss and open the overview, a department's Menu & Stock, Today's r
 npx prisma migrate deploy
 ```
 
-Seven migrations run, in order:
+Eight migrations run, in order:
 
 1. `20260926090000_restaurant_foundation`: new enum values, columns and tables (accounting periods,
    attachments, void/idempotency fields, handover status, organization time zone …). Additive only.
@@ -84,6 +85,8 @@ Seven migrations run, in order:
 7. `20261005090000_two_roles`: two roles only. Every account except the Boss becomes a department head (`HEAD`) of
    the departments it is assigned to; its old role becomes its title (Manager, Accountant, Cashier), which the Boss
    can edit in People. Removes per-department role overrides and the column added by migration 6.
+8. `20261006090000_performance_and_sync`: additive: four indexes (debts, repayments, handovers, reports) and the
+   `sync_operations` table (one row per record sent by a device: its key and result, so nothing is recorded twice).
 
 Then deploy the application code.
 
@@ -109,6 +112,16 @@ backup from step 1 and redeploy the previous code.
 Vercel builds with `npm install` (which runs `prisma generate`) and `npm run build`. It never touches the database:
 run `npx prisma migrate deploy` against Supabase **before** pushing code that needs a new migration.
 
+**Region.** `vercel.json` runs the functions in Stockholm (`arn1`), next to the Supabase database (eu-north-1). If your
+Supabase project is elsewhere, set the matching region there (and in *Settings → Functions → Function Region*). Check
+in a deployment's logs that requests show `arn1`.
+
+**Speed Insights** (optional, free on Hobby within limits): *Project → Speed Insights → Enable*, then redeploy. The app
+loads its script on Vercel automatically. Slow database queries (≥ 500 ms) appear in the logs as `"event":"slow_query"`.
+
+**Offline.** Nothing to configure: the service worker (`/sw.js`) is served with `Cache-Control: no-cache` so every
+deployment reaches the computers at their next visit.
+
 Environment variables (Project → Settings → Environment Variables, Production and Preview):
 
 | Variable | Value |
@@ -120,7 +133,9 @@ Environment variables (Project → Settings → Environment Variables, Productio
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | AI insights (optional) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | e-mails (optional) |
 | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | scheduled jobs |
-| Clerk keys, `ARCJET_KEY`, `NODE_ENV` | remove: no longer used / set by Vercel |
+| `ARCJET_KEY` | abuse protection (Arcjet dashboard → your site → key). Shared rate limits for sign-in (8 per account and address / 15 min), registration (5 per address / hour, bots and disposable e-mails refused) and password changes, plus Arcjet Shield. Without it an in-memory limiter per server instance is used |
+| `ARCJET_MODE` | optional: `DRY_RUN` to only log what would be blocked (default `LIVE`) |
+| Clerk keys, `NODE_ENV` | remove: no longer used / set by Vercel |
 
 After the first deployment, open the Inngest dashboard → Apps → **Sync** (or re-sync `https://<your-app>/api/inngest`) so
 it picks up the three scheduled jobs of this version (missing-report reminder, monthly statement, stock check) and drops

@@ -1,45 +1,37 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { toast } from "sonner";
-import { Paperclip, Loader2, X, FileText } from "lucide-react";
-import { uploadAttachment } from "@/actions/attachments";
+import { Paperclip, X, FileText } from "lucide-react";
+
+export const MAX_PROOF_BYTES = 4 * 1024 * 1024;
+const ACCEPT = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
 /**
- * Uploads proof files (receipts, slips) and reports their ids via onChange(ids).
- * Files are validated on the server (type by content, 4 MB max).
+ * Proof files (receipts, slips) chosen for a record. They are kept with the record on this
+ * computer and uploaded when it is sent (so they work offline too); the server checks the
+ * content (type, 4 MB max). `value` / `onChange`: the chosen File objects.
  */
-export function ProofUpload({ departmentId, value = [], onChange, label = "Attach proof (photo or PDF)" }) {
+export function ProofUpload({ value = [], onChange, label = "Attach proof (photo or PDF)" }) {
   const inputRef = useRef(null);
-  const [files, setFiles] = useState([]);
-  const [busy, setBusy] = useState(false);
 
-  const handle = async (e) => {
+  const handle = (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (file.size > 4 * 1024 * 1024) {
+    if (file.size > MAX_PROOF_BYTES) {
       toast.error("File is larger than 4 MB. Take a smaller photo.");
       return;
     }
-    setBusy(true);
-    const fd = new FormData();
-    fd.append("file", file);
-    if (departmentId) fd.append("departmentId", departmentId);
-    const res = await uploadAttachment(fd);
-    setBusy(false);
-    if (!res?.success) {
-      toast.error(res?.error || "Upload failed.");
+    if (file.type && !ACCEPT.includes(file.type)) {
+      toast.error("Only photos (JPEG, PNG, WebP) and PDF files can be attached.");
       return;
     }
-    const next = [...files, res.data];
-    setFiles(next);
-    onChange?.([...value, res.data.id]);
-  };
-
-  const remove = (id) => {
-    setFiles(files.filter((f) => f.id !== id));
-    onChange?.(value.filter((v) => v !== id));
+    if (value.length >= 5) {
+      toast.error("At most 5 files per record.");
+      return;
+    }
+    onChange?.([...value, file]);
   };
 
   return (
@@ -47,22 +39,21 @@ export function ProofUpload({ departmentId, value = [], onChange, label = "Attac
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
-        disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-md border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
       >
-        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Paperclip className="h-3.5 w-3.5" />}
+        <Paperclip className="h-3.5 w-3.5" />
         {label}
       </button>
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handle} />
-      {files.length > 0 && (
+      <input ref={inputRef} type="file" accept={ACCEPT.join(",")} className="hidden" onChange={handle} data-testid="proof-input" />
+      {value.length > 0 && (
         <ul className="space-y-1">
-          {files.map((f) => (
-            <li key={f.id} className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs">
+          {value.map((f, i) => (
+            <li key={`${f.name}-${i}`} className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs">
               <span className="flex items-center gap-1.5 truncate">
                 <FileText className="h-3.5 w-3.5 text-slate-500" />
-                {f.fileName}
+                {f.name}
               </span>
-              <button type="button" onClick={() => remove(f.id)} aria-label="Remove file">
+              <button type="button" onClick={() => onChange?.(value.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>
                 <X className="h-3.5 w-3.5 text-slate-500" />
               </button>
             </li>

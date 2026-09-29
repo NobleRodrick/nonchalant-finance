@@ -1,23 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-
-function newKey() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, "");
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
-}
-
-/**
- * Idempotency key for one form submission: the same key is re-sent on retries and double
- * clicks, so the money is recorded once. Call `renew()` after a successful submission.
- */
-export function useIdempotencyKey() {
-  const [key, setKey] = useState(newKey);
-  const renew = useCallback(() => setKey(newKey()), []);
-  return [key, renew];
-}
+import { isNetworkError, isOnline, reportNetworkFailure } from "@/lib/offline/connectivity";
 
 /** Runs a server action ({ success, data, error }) and shows a toast. Returns data or null. */
 export async function runWithToast(promise, { success, error } = {}) {
@@ -31,21 +17,27 @@ export async function runWithToast(promise, { success, error } = {}) {
     toast.error(res?.error || error || "Something went wrong.");
     return null;
   } catch (e) {
+    if (isNetworkError(e)) {
+      reportNetworkFailure();
+      toast.error("No connection. This needs the internet: try again when the connection is back.");
+      return null;
+    }
     toast.error(e?.message || error || "Something went wrong.");
     return null;
   }
 }
 
 /**
- * Keeps a page's figures current while it is visible: refreshes the server data every
- * `seconds` (another cashier may be selling) and when the tab becomes visible again.
+ * Keeps a page's figures current while it is visible and connected: refreshes the server data
+ * every `seconds` (the Boss may request cash or return a report) and when the tab becomes
+ * visible again. Never while offline (the page shows its saved figures + this device's records).
  */
-export function useLiveRefresh(seconds = 20) {
+export function useLiveRefresh(seconds = 60) {
   const router = useRouter();
   useEffect(() => {
     let timer = null;
     const tick = () => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (document.visibilityState === "visible" && isOnline()) router.refresh();
     };
     const start = () => {
       clearInterval(timer);
@@ -53,7 +45,7 @@ export function useLiveRefresh(seconds = 20) {
     };
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        router.refresh();
+        if (isOnline()) router.refresh();
         start();
       } else clearInterval(timer);
     };

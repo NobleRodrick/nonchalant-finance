@@ -14,7 +14,20 @@ money in and out, debts, cash handed to the Boss, and the daily report sent to t
 Tailwind CSS 4 · Vitest · Playwright · Inngest · Resend · Gemini (AI insights, optional).
 
 The design and every rule are in [`docs/RESTAURANT_V2_IMPLEMENTATION_PLAN.md`](docs/RESTAURANT_V2_IMPLEMENTATION_PLAN.md);
-what is implemented and how it is tested is in [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md).
+what is implemented and how it is tested is in [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md);
+speed and offline work in [`docs/OFFLINE_AND_PERFORMANCE.md`](docs/OFFLINE_AND_PERFORMANCE.md).
+
+---
+
+## Works without internet
+
+A department head keeps working when the connection drops: selling (and undoing a sale), Menu & Stock, money in
+and out, debts, cash to the Boss and the daily report. Every record is saved on the computer first (IndexedDB),
+shown at once in every figure, and sent to the server in order when the connection is back, exactly once
+(each record has a key; the server applies the same rules as online). The top bar says *All saved*,
+*Offline · 3 waiting*, *Sending…* or *1 needs attention* (a record the server refused, with the reason).
+Pages open offline once they were opened on the computer (service worker, `public/sw.js`). The Boss can approve
+reports, confirm cash and request cash offline too. One computer per department for now.
 
 ---
 
@@ -61,8 +74,14 @@ to their new pages (`next.config.mjs`).
 - **Cash to the Boss:** only a department head hands cash over. The Boss requests the cash of a period (today by default);
   due = cash taken in − cash paid out in the period − cash already handed over for it (the opening float stays in the drawer).
 - **Debts:** owed at the end = owed at the start + new credit sales + old debts entered − repayments.
+- **Undo a sale:** a department head (never the Boss) can undo a sale recorded by mistake: from the receipt, the day's sales
+  ("Undo and fix" puts its dishes back in the basket) or its detail in History. A reason is required; the sale stays in History
+  marked Void, its plates go back to stock, its money leaves the totals and a debt it opened is cancelled. A day whose report was
+  sent is locked until the Boss returns it.
 - **Traceability:** every record has a reference per department (`S-0001` sale, `P-` purchase, `E-` expense, `H-` handover …),
   an author and an audit event; corrections are **voids** with a reason, never silent edits.
+- **Abuse protection:** sign-in, registration and password changes are rate-limited; in production Arcjet (`ARCJET_KEY`) shares
+  the limits across all server instances, blocks bots and attack patterns and refuses disposable e-mails (`lib/security/protect.js`).
 - The **business day** follows the organization's time zone (default `Africa/Douala`).
 - Sent / approved days are locked; the Boss can return a report, which then gets a new version.
 
@@ -86,6 +105,7 @@ For the existing Supabase database, apply the migrations as described in [`docs/
 | `npm run test:unit` | Money, stock and format maths, time zones, permissions (no database). |
 | `npm run test:integration` | Server actions on a disposable database: the full reference day of the plan (§10.4), menu & stock, concurrency (no overselling), idempotency, money, debts, voids, discount limit, report return/approve, multi-department people, department types, access and cross-organization isolation, AI insights. |
 | `npm run test:e2e` | Playwright in a real browser: the restaurant day from registration to the Boss approving the report, every page for every role (with accessibility checks), redirects, fixed sidebar and phone drawer. |
+| `npm run test:offline` | Builds the production app and runs `e2e-offline/`: the server is stopped for real while a head sells, undoes and records money; it is started again and everything arrives once. |
 | `npm run lint` / `npm run build` | ESLint and the production build. |
 
 Integration and E2E tests need `TEST_DATABASE_URL` pointing at a **throw-away** database; it is wiped and rebuilt from
@@ -112,6 +132,9 @@ app/(setup)         onboarding wizard (company → departments with type → peo
 app/(main)          the app: d/[deptId]/* (department pages), boss/*, statements, profile, home, go, my-departments
 actions/            server actions: menu-stock, sales, money, debts, handovers, daily-report, history,
                     organization, auth, periods, attachments, notifications, insights
+lib/operations/     every write as a named operation, run once per key (server actions and /api/sync)
+lib/offline/        outbox (IndexedDB), sync engine, connectivity, overlays (unsent records in the figures)
+app/api/sync        receives a device's outbox        public/sw.js   service worker (pages offline)
 lib/restaurant/     plate stock maths and stock service (dishes, movements, opening, corrections)
 lib/finance/        money maths, posting service (sales, money, purchases, debts, handovers, voids), statements
 lib/reports/        the daily report model          lib/boss/      Boss overview and report calendar
@@ -121,6 +144,6 @@ lib/                access, permissions, auth, audit, idempotency, time zone, fo
 components/kit      shared UI (money, tables, headers, dialogs helpers)     components/shell  sidebar & layout
 components/         restaurant, reports, boss, charts, domains, ui (shadcn)
 prisma/             schema.prisma and migrations
-tests/, e2e/        Vitest (unit + integration) and Playwright suites
+tests/, e2e/        Vitest (unit + integration) and Playwright suites; e2e-offline/ (production build, server stopped)
 docs/               plan, implementation status, deployment guide
 ```

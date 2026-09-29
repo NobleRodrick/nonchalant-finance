@@ -40,6 +40,7 @@ model Organization {
   inventorySnapshots InventorySnapshot[]
   debtors            Debtor[]
   notifications      Notification[]
+  syncOperations     SyncOperation[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -543,6 +544,7 @@ model Debt {
   updatedAt       DateTime      @updatedAt
 
   @@index([organizationId, departmentId, status])
+  @@index([departmentId, date])
   @@index([debtorId])
   @@map("debts")
 }
@@ -626,6 +628,7 @@ model DebtPayment {
   createdAt      DateTime      @default(now())
 
   @@index([debtId, date])
+  @@index([departmentId, date])
   @@map("debt_payments")
 }
 
@@ -656,6 +659,7 @@ model CashHandover {
   createdAt      DateTime       @default(now())
 
   @@index([organizationId, departmentId, date])
+  @@index([organizationId, status])
   @@map("cash_handovers")
 }
 
@@ -730,6 +734,7 @@ model DailyReport {
 
   @@unique([departmentId, reportDate])
   @@index([organizationId, reportDate])
+  @@index([organizationId, status])
   @@map("daily_reports")
 }
 
@@ -896,4 +901,25 @@ enum DebtStatus {
   PARTIALLY_PAID
   PAID
   CANCELLED
+}
+
+/// One write sent by a device, online or later from its offline outbox (lib/sync). The key
+/// (generated on the device) makes every operation idempotent: a retried or replayed operation
+/// returns the result of its first run instead of recording anything twice. Written in the same
+/// database transaction as the operation itself.
+model SyncOperation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  userId         String
+  key            String
+  kind           String
+  result         Json
+  occurredAt     DateTime // when it was done on the device
+  appliedAt      DateTime     @default(now())
+
+  @@unique([organizationId, key])
+  @@index([departmentId, appliedAt])
+  @@map("sync_operations")
 }

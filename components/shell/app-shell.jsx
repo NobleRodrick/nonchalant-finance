@@ -57,8 +57,20 @@ export async function AppShell({ user, children }) {
         ]
       : [];
 
+  // Pages kept on this computer for offline use (lib/offline, public/sw.js).
+  const warmUrls =
+    user.role === "ADMIN"
+      ? ["/boss", "/boss/daily-reports", "/boss/cash", "/boss/departments", "/boss/people", "/profile"]
+      : [
+          ...depts.filter((d) => d.enabled).slice(0, 4).flatMap((d) => d.nav.map((n) => n.href)),
+          depts.length > 1 ? "/my-departments" : null,
+          "/profile",
+        ].filter(Boolean);
+
   return (
     <Sidebar
+      timeZone={timeZone}
+      warmUrls={warmUrls}
       user={{
         id: user.id,
         name: user.name,

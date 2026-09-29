@@ -1,15 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { BookUser, HandCoins, History, Loader2, Plus, Printer, Search, Trash2 } from "lucide-react";
+import { BookUser, CloudOff, HandCoins, History, Loader2, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState, Field, Money, StatCard, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
-import { runWithToast, useIdempotencyKey, useLiveRefresh, wholeNumber } from "@/components/kit/client";
+import { useLiveRefresh, wholeNumber } from "@/components/kit/client";
 import { VoidButton } from "@/components/kit/void-button";
 import { formatMoney } from "@/lib/format";
-import { recordDebt, recordOldDebt, recordRepayment, cancelOldDebt } from "@/actions/debts";
+import { formatDateKey } from "@/lib/timezone";
+import { usePendingEffects, useRecorder } from "@/lib/offline/react";
+import { overlayDebts, overlayDishes } from "@/lib/offline/overlay";
+import { cancelDebtSpec, debtSpec, repaySpec } from "@/lib/offline/specs";
 import { cn } from "@/lib/utils";
 
 const SOURCE = { CREDIT_SALE: "Sale on credit", MANUAL: "Recorded debt", OPENING_BALANCE: "Old debt" };
@@ -35,16 +37,16 @@ function CustomerPicker({ customers, value, onChange }) {
   );
 }
 
+/** The customer as sent: a known customer by id, otherwise by name (the server finds or creates it). */
 const debtorPayload = (c, customers) => {
   const found = customers.find((x) => x.key === c.debtorKey);
-  if (found && /^[0-9a-f-]{36}$/i.test(String(found.key))) return { debtorId: found.key };
-  if (found) return { debtor: { name: found.name, phone: found.phone } };
-  return { debtor: { name: c.name, phone: c.phone } };
+  if (found && /^[0-9a-f-]{36}$/i.test(String(found.key))) return { debtorId: found.key, customer: found.name, phone: found.phone };
+  if (found) return { debtor: { name: found.name, phone: found.phone }, customer: found.name, phone: found.phone };
+  return { debtor: { name: c.name.trim(), phone: c.phone }, customer: c.name.trim(), phone: c.phone };
 };
 
 function RecordDebtDialog({ open, onClose, departmentId, customers, dishes, mode }) {
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
+  const record = useRecorder();
   const [f, setF] = useState({ customer: { debtorKey: "", name: "", phone: "" }, kind: mode === "old" ? "amount" : "dishes", lines: [{ dishId: "", quantity: "" }], amount: "", description: "", dueDate: "", dateKey: "" });
   const [busy, setBusy] = useState(false);
   const byId = Object.fromEntries(dishes.map((d) => [d.id, d]));
@@ -57,20 +59,19 @@ function RecordDebtDialog({ open, onClose, departmentId, customers, dishes, mode
   const submit = async () => {
     setBusy(true);
     const who = debtorPayload(f.customer, customers);
-    const action =
-      mode === "old"
-        ? recordOldDebt({ departmentId, ...who, amount: f.amount, description: f.description, dueDate: f.dueDate || null, dateKey: f.dateKey || null })
-        : recordDebt({
-            departmentId, ...who, idempotencyKey: key, dueDate: f.dueDate || null,
-            ...(f.kind === "dishes" ? { lines: lines.map((l) => ({ dishId: l.dishId, quantity: Number(l.quantity) })) } : { amount: f.amount, description: f.description }),
-          });
-    const ok = await runWithToast(action, { success: (d) => `Debt ${d.referenceNo} recorded: ${formatMoney(total)}.` });
+    const spec = debtSpec({
+      departmentId,
+      old: mode === "old",
+      dateKey: mode === "old" ? f.dateKey || null : null,
+      ...who,
+      dueDate: f.dueDate || null,
+      lines: mode !== "old" && f.kind === "dishes" ? lines.map((l) => ({ dishId: l.dishId, name: byId[l.dishId]?.name, price: byId[l.dishId]?.price || 0, quantity: Number(l.quantity) })) : [],
+      amount: f.amount,
+      description: f.description,
+    });
+    const ok = await record(spec, { success: (d) => `Debt ${d.referenceNo} recorded: ${formatMoney(total)}.` });
     setBusy(false);
-    if (ok) {
-      renew();
-      onClose();
-      router.refresh();
-    }
+    if (ok) onClose();
   };
   const setLine = (i, patch) => setF({ ...f, lines: f.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
   return (
@@ -146,28 +147,23 @@ function RecordDebtDialog({ open, onClose, departmentId, customers, dishes, mode
 }
 
 function RepaymentDialog({ debt, onClose, departmentId }) {
-  const router = useRouter();
-  const [key, renew] = useIdempotencyKey();
+  const record = useRecorder();
   const [f, setF] = useState({ amount: debt ? String(debt.balance) : "", paymentMethod: "CASH", reference: "" });
   const [busy, setBusy] = useState(false);
   if (!debt) return null;
   const amount = Number(f.amount) || 0;
   const submit = async () => {
     setBusy(true);
-    const ok = await runWithToast(recordRepayment({ departmentId, debtId: debt.id, ...f, idempotencyKey: key }), { success: (d) => `Repayment ${d.referenceNo} recorded.` });
+    const ok = await record(repaySpec({ departmentId, debt, amount: f.amount, paymentMethod: f.paymentMethod, reference: f.reference }), { success: (d) => `Repayment ${d.referenceNo} recorded.` });
     setBusy(false);
-    if (ok) {
-      renew();
-      onClose();
-      router.refresh();
-    }
+    if (ok) onClose();
   };
   return (
     <Dialog open={Boolean(debt)} onOpenChange={(v) => !v && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Repayment by {debt.debtor}</DialogTitle>
-          <DialogDescription>Debt {debt.referenceNo}: owes {formatMoney(debt.balance)} of {formatMoney(debt.owed)}.</DialogDescription>
+          <DialogDescription>{debt.pending && debt.referenceNo === "Not sent yet" ? "Debt not sent yet" : `Debt ${debt.referenceNo}`}: owes {formatMoney(debt.balance)} of {formatMoney(debt.owed)}.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Amount paid (FCFA)" required htmlFor="repay-amount" error={amount > debt.balance ? `At most ${formatMoney(debt.balance)}` : null}>
@@ -252,8 +248,16 @@ function CustomerStatement({ customer, debts, onClose, departmentName }) {
   );
 }
 
-export function DebtsBoard({ departmentId, departmentName, perms, stats, debts, customers, dishes }) {
-  useLiveRefresh(30);
+export function DebtsBoard({ departmentId, departmentName, todayKey, renderedAt, perms, stats: serverStats, debts: serverDebts, dishes: serverDishes }) {
+  useLiveRefresh(120);
+  const record = useRecorder();
+  // The server's debts + debts, repayments and cancellations recorded on this computer and not sent yet.
+  const effects = usePendingEffects(departmentId, renderedAt);
+  const { debts, customers, stats } = useMemo(
+    () => overlayDebts(serverDebts, effects, { todayKey, repaidToday: serverStats.repaidToday, formatDate: formatDateKey }),
+    [serverDebts, effects, todayKey, serverStats.repaidToday]
+  );
+  const dishes = useMemo(() => overlayDishes(serverDishes, effects), [serverDishes, effects]);
   const [tab, setTab] = useState("open");
   const [q, setQ] = useState("");
   const [dialog, setDialog] = useState(null);
@@ -332,8 +336,11 @@ export function DebtsBoard({ departmentId, departmentName, perms, stats, debts, 
             </thead>
             <tbody>
               {filtered.map((d) => (
-                <tr key={d.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-2 font-medium">{d.referenceNo}</td>
+                <tr key={d.id} className="border-b border-slate-100 last:border-0" data-pending={d.pending ? "1" : undefined}>
+                  <td className="px-4 py-2 font-medium">
+                    {d.referenceNo === "Not sent yet" ? <span className="inline-flex items-center gap-1 text-amber-700"><CloudOff className="h-3.5 w-3.5" /> Not sent yet</span> : d.referenceNo}
+                    {d.pending && d.referenceNo !== "Not sent yet" ? <div className="text-[11px] font-normal text-amber-700">changes not sent yet</div> : null}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2">{d.dateLabel}</td>
                   <td className="px-3 py-2">
                     <button type="button" className="font-medium underline-offset-2 hover:underline" onClick={() => setStatement(customers.find((c) => c.key === (d.debtorId || d.debtor)))}>{d.debtor}</button>
@@ -352,7 +359,7 @@ export function DebtsBoard({ departmentId, departmentName, perms, stats, debts, 
                       <Button size="sm" variant="outline" onClick={() => setRepay(d)}><HandCoins className="h-3.5 w-3.5" /> Repayment</Button>
                     ) : null}
                     {perms.manage && d.source === "OPENING_BALANCE" && d.status === "UNPAID" ? (
-                      <VoidButton label="Cancel" what="debt" reference={d.referenceNo} action={(reason) => cancelOldDebt({ departmentId, debtId: d.id, reason })} />
+                      <VoidButton label="Cancel" what="debt" reference={d.referenceNo} onVoid={(reason) => record(cancelDebtSpec({ departmentId, debt: d, reason }), { success: `${d.referenceNo} cancelled.` })} />
                     ) : null}
                   </td>
                 </tr>
