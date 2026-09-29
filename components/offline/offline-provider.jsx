@@ -15,6 +15,8 @@ export { postToServiceWorker };
 
 const RESAVE_EVERY_MS = 10 * 60 * 1000;
 const RESAVE_AFTER_SEND_MS = 20000;
+/** A saving round that left pages unsaved (slow or broken connection) is tried again this soon. */
+const RETRY_MISSING_MS = 60000;
 
 /**
  * Sends a proof file saved on this device; returns its id. A refused file throws (the record is
@@ -57,6 +59,12 @@ function useSavedPages(urls) {
   const [saved, setSaved] = useState([]);
   const [saving, setSaving] = useState(false);
   const lastSave = useRef(0);
+  const savedRef = useRef(saved);
+  const savingRef = useRef(saving);
+  useEffect(() => {
+    savedRef.current = saved;
+    savingRef.current = saving;
+  }, [saved, saving]);
   const resaveTimer = useRef(null);
 
   const saveNow = useCallback(() => {
@@ -75,6 +83,7 @@ function useSavedPages(urls) {
       .then((ok) => alive && setEnabled(ok))
       .catch(() => {});
     const off = onServiceWorkerMessage((msg) => {
+      if (msg.type === "warm-progress" && Array.isArray(msg.pages)) setSaved(msg.pages);
       if (msg.type === "warm-done") {
         setSaving(false);
         if (Array.isArray(msg.pages)) setSaved(msg.pages);
@@ -95,7 +104,11 @@ function useSavedPages(urls) {
       setSaved(pages);
       if (urls.some((u) => !pages.includes(u))) saveNow();
     });
-    const every = setInterval(() => Date.now() - lastSave.current >= RESAVE_EVERY_MS && saveNow(), 60000);
+    const every = setInterval(() => {
+      const since = Date.now() - lastSave.current;
+      const incomplete = urls.some((u) => !savedRef.current.includes(u));
+      if (since >= RESAVE_EVERY_MS || (incomplete && !savingRef.current && since >= RETRY_MISSING_MS)) saveNow();
+    }, 15000);
     return () => {
       alive = false;
       clearInterval(every);
@@ -117,6 +130,18 @@ function useSavedPages(urls) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, key, saved, saving, saveNow]);
   return { pages, saveNow, saveSoon };
+}
+
+/**
+ * Tells the service worker whether the app is online, so that while offline it answers page loads
+ * from the saved copies at once instead of waiting for the network to give up.
+ */
+function useConnectivityForWorker() {
+  useEffect(() => {
+    const tell = (online) => postToServiceWorker({ type: "connectivity", online }).catch(() => {});
+    tell(isOnline());
+    return subscribeConnectivity(tell);
+  }, []);
 }
 
 /** This person's outbox and the sync engine (sending, refresh after sending). */
@@ -192,6 +217,7 @@ export function OfflineProvider({ userId, userName, timeZone, warmUrls = [], chi
     saveNow();
   }, [refreshSoon, saveNow]);
   useOutbox(userId, { onSent });
+  useConnectivityForWorker();
   useReconnect({ userId, onBack });
 
   const context = useMemo(() => ({ userId, userName, timeZone, enabled: true }), [userId, userName, timeZone]);

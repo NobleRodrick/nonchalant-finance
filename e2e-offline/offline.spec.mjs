@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import net from "node:net";
 import { expect, test } from "@playwright/test";
 
 /**
@@ -58,6 +59,24 @@ async function stopServer() {
   }
 }
 
+/**
+ * A connection that hangs instead of failing (weak signal, hotspot without credit): something
+ * accepts the connections on the server's port and never answers. The browser still says "online".
+ */
+async function hangServer() {
+  const sockets = new Set();
+  const srv = net.createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    socket.on("error", () => {});
+  });
+  await new Promise((resolve) => srv.listen(PORT, resolve));
+  return async () => {
+    for (const s of sockets) s.destroy();
+    await new Promise((resolve) => srv.close(resolve));
+  };
+}
+
 async function toast(page, text) {
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: text }).first()).toBeVisible();
 }
@@ -74,7 +93,12 @@ async function login(page, email, password) {
 
 /** Waits until the service worker controls the page (pages opened from now on are kept). */
 async function swReady(page) {
-  await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 30000 });
+  try {
+    await page.waitForFunction(() => navigator.serviceWorker?.controller != null, null, { timeout: 30000 });
+  } catch (e) {
+    console.log("SWSTATE", page.url(), await page.evaluate(async () => { const r = await navigator.serviceWorker.getRegistration(); return JSON.stringify({ r: !!r, i: r?.installing?.state, w: r?.waiting?.state, a: r?.active?.state, c: await caches.keys() }); }));
+    throw e;
+  }
 }
 
 test.beforeAll(async () => {
@@ -133,6 +157,7 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   await page.keyboard.press("Escape");
 
   // ── The connection is gone (Wi-Fi off: the browser knows, and the server is unreachable) ──
+  await page.waitForLoadState("networkidle"); // the refresh after the dish was sent is done
   await stopServer();
   await page.context().setOffline(true);
   await page.goto(`/d/${deptId}/sell`); // served by the service worker
@@ -213,10 +238,12 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   await expect(page.getByTestId("dish-row-Rice")).not.toContainText("not sent yet"); // server figures, no reload
   await expect(page.getByTestId("dish-row-Rice")).toContainText("7 000");
   await page.goto(`/d/${deptId}/sell`);
-  await expect(page.locator("tr", { hasText: "S-0001" })).toContainText("3 × Rice");
-  await expect(page.locator("tr", { hasText: "S-0002" })).toContainText("Undone");
+  // In the page itself (while the page streams in, React keeps a hidden copy of its parts outside it).
+  const main = page.getByRole("main");
+  await expect(main.locator("tr", { hasText: "S-0001" })).toContainText("3 × Rice");
+  await expect(main.locator("tr", { hasText: "S-0002" })).toContainText("Undone");
   await page.goto(`/d/${deptId}/money`);
-  await expect(page.locator("tr", { hasText: "E-0001" })).toContainText("1 500");
+  await expect(main.locator("tr", { hasText: "E-0001" })).toContainText("1 500");
   // The receipt photo was uploaded and linked to the expense.
   const pg = (await import("pg")).default;
   const sql = new pg.Client({ connectionString: process.env.TEST_DATABASE_URL });
@@ -226,6 +253,36 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   expect(rows.map((r) => r.fileName)).toEqual(["receipt.png"]);
   await page.getByTestId("sync-status").click();
   await expect(page.getByRole("dialog")).toContainText("Sent recently");
+});
+
+test("a connection that hangs (the browser still says online): links open the saved pages", async ({ page }) => {
+  await login(page, head.email, head.password);
+  await page.waitForURL(/\/d\//);
+  await swReady(page);
+  await page.goto(`/d/${deptId}/sell`);
+  await page.getByTestId("sync-status").click();
+  await expect(page.getByTestId("offline-pages")).toContainText("Every page of your departments opens on this computer", { timeout: 60_000 });
+  await page.keyboard.press("Escape");
+
+  await stopServer();
+  const release = await hangServer();
+  try {
+    const nav = page.getByRole("navigation", { name: "Main navigation" }).first();
+    // The first click waits for the router, notices the server does not answer, and loads the saved page.
+    await nav.getByRole("link", { name: "Debts", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Debts", level: 1 })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("offline-banner")).toBeVisible({ timeout: 30_000 });
+    // Known offline now: the next pages open at once from this computer.
+    for (const [link, heading] of [["Cash to Boss", "Cash to Boss"], ["Menu & Stock", "Menu & Stock"], ["Sell", "Sell"]]) {
+      const started = Date.now();
+      await nav.getByRole("link", { name: link, exact: true }).click();
+      await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
+      expect(Date.now() - started).toBeLessThan(5000);
+    }
+  } finally {
+    await release();
+    await startServer();
+  }
 });
 
 test("a record the server refuses when it arrives needs attention: the reason is shown, it can be discarded", async ({ page }) => {
@@ -294,5 +351,5 @@ test("the Boss confirms a handover while offline; it is sent when the connection
   await page.goto("/boss/cash");
   await expect(page.getByTestId("sync-status")).toHaveAttribute("data-state", "ok", { timeout: 90_000 });
   await page.reload();
-  await expect(page.getByText("Nothing to confirm")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Nothing to confirm")).toBeVisible();
 });

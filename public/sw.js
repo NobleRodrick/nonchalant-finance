@@ -10,13 +10,20 @@
  * The pages cache holds the signed-in person's data: it is emptied at sign-out and when another
  * person signs in on this computer ("purge-pages").
  */
-const VERSION = "2"; // v2: code files cached under one key (see staticKey)
+const VERSION = "3"; // v3: timeouts, pages saved only with all their code, parallel saving
 const STATIC_CACHE = `sf-static-v${VERSION}`;
 const ASSETS_CACHE = `sf-assets-v${VERSION}`;
 const PAGES_CACHE = `sf-pages-v${VERSION}`; // a new version saves the pages (and their code) again
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/logo.jpg"];
 const NAV_TIMEOUT_MS = 12000;
+/** A data request of the router gets this long before the router loads the page instead. */
+const RSC_TIMEOUT_MS = 10000;
+/** Saving pages: a page (slow connections stream pages for a long time) and a code file. */
+const WARM_PAGE_TIMEOUT_MS = 90000;
+const WARM_ASSET_TIMEOUT_MS = 45000;
+const WARM_PAGES_AT_ONCE = 3;
+const WARM_ASSETS_AT_ONCE = 6;
 const MAX_PAGES = 80;
 const MAX_STATIC = 500;
 const KEEP = [STATIC_CACHE, ASSETS_CACHE, PAGES_CACHE];
@@ -83,8 +90,38 @@ function timeout(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms));
 }
 
+/**
+ * Runs `work(signal)` with a time limit: at `ms` its requests are cut, including a body still
+ * arriving (a connection that hangs counts as no connection).
+ */
+async function withDeadline(ms, work) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await work(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** fetch() whose answer must start within `ms` (the body may then take its time). */
+function fetchWithin(input, init, ms) {
+  return withDeadline(ms, (signal) => fetch(input, { ...init, signal }));
+}
+
+/**
+ * What the app last said about the connection ("connectivity" message). While the app knows it is
+ * offline, pages come from the saved copies at once instead of waiting for the network to give up.
+ * Unknown (worker restarted) counts as online.
+ */
+let appOffline = false;
+
 async function handleNavigation(event) {
   const { request } = event;
+  if (appOffline) {
+    const saved = await cachedPage(request.url);
+    if (saved) return saved;
+  }
   const network = (async () => {
     const preload = await event.preloadResponse;
     return preload || fetch(request);
@@ -156,8 +193,10 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname.startsWith("/api/") || url.pathname === "/sw.js") return;
 
   // App router data requests: network only (fail fast so the router loads the page instead).
+  // Also when the connection hangs instead of failing: after RSC_TIMEOUT_MS, or at once when the
+  // app knows it is offline.
   if (request.headers.get("RSC") === "1" || url.searchParams.has("_rsc")) {
-    event.respondWith(fetch(request).catch(() => Response.error()));
+    event.respondWith(appOffline ? Response.error() : fetchWithin(request, {}, RSC_TIMEOUT_MS).catch(() => Response.error()));
     return;
   }
   if (request.mode === "navigate") {
@@ -189,35 +228,105 @@ function assetsOfCss(css) {
   return found.filter((u) => u.startsWith("/_next/static/"));
 }
 
-/** Fetches pages (and their code) now, so they open offline later. */
+/** Runs `task` over `items`, `limit` at a time. */
+async function eachLimited(items, limit, task) {
+  let next = 0;
+  const run = async () => {
+    while (next < items.length) {
+      const item = items[next];
+      next += 1;
+      await task(item);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+}
+
+/**
+ * Caches the code files `assets` (and the fonts of style sheets). Resolves true when every script
+ * and style file is in the cache (a missing font does not count: the page still works).
+ */
+async function cacheAssets(staticCache, assets, inFlight) {
+  let complete = true;
+  const fonts = [];
+  await eachLimited(assets, WARM_ASSETS_AT_ONCE, async (a) => {
+    const key = staticKey(a);
+    if (await staticCache.match(key)) return;
+    if (!inFlight.has(key)) {
+      inFlight.set(
+        key,
+        withDeadline(WARM_ASSET_TIMEOUT_MS, async (signal) => {
+          const r = await fetch(a, { signal });
+          if (!r.ok) return false;
+          if (a.includes("/static/css/")) fonts.push(...assetsOfCss(await r.clone().text()));
+          await staticCache.put(key, r);
+          return true;
+        }).catch(() => false)
+      );
+    }
+    if (!(await inFlight.get(key))) complete = false;
+  });
+  const missingFonts = [...new Set(fonts)].filter((f) => !assets.includes(f));
+  if (missingFonts.length) await cacheAssets(staticCache, missingFonts, inFlight);
+  return complete;
+}
+
+/**
+ * Fetches pages (and their code) now, so they open offline later. A page is kept only once all
+ * its code is saved (otherwise it would open without its scripts); the previous copy stays until
+ * then. Every request has a time limit, so one that hangs cannot stop the others, and each saved
+ * page is announced at once ("warm-progress").
+ */
 async function warm(urls) {
   const staticCache = await caches.open(STATIC_CACHE);
-  const seen = new Set();
-  for (const url of urls.slice(0, 40)) {
+  const inFlight = new Map();
+  await eachLimited(urls.slice(0, 40), WARM_PAGES_AT_ONCE, async (url) => {
     try {
-      const response = await fetch(url, { credentials: "same-origin", cache: "no-store", headers: { "x-sf-warm": "1" } });
-      if (!keepable(response)) continue;
-      const html = await response.clone().text();
-      await storePage(new URL(url, self.location.origin).toString(), response);
-      // Code the page needs (script and style files, fonts), including the router's lazy chunks.
-      const assets = assetsOf(html);
-      for (const a of assets) {
-        if (seen.has(a)) continue;
-        seen.add(a);
-        if (await staticCache.match(staticKey(a))) continue;
-        const r = await fetch(a).catch(() => null);
-        if (!r || !r.ok) continue;
-        if (a.includes("/static/css/")) assets.push(...assetsOfCss(await r.clone().text()).filter((u) => !seen.has(u)));
-        await staticCache.put(staticKey(a), r);
-      }
+      // The whole page (slow connections stream it for a long time) within the limit.
+      const page = await withDeadline(WARM_PAGE_TIMEOUT_MS, async (signal) => {
+        const response = await fetch(url, { credentials: "same-origin", cache: "no-store", headers: { "x-sf-warm": "1" }, signal });
+        if (!keepable(response)) return null;
+        const html = await response.text();
+        const headers = new Headers(response.headers);
+        headers.delete("content-encoding"); // the text is already decoded
+        headers.delete("content-length");
+        return { html, headers, status: response.status, statusText: response.statusText };
+      });
+      if (!page || !(await cacheAssets(staticCache, assetsOf(page.html), inFlight))) return;
+      const copy = new Response(page.html, { status: page.status, statusText: page.statusText, headers: page.headers });
+      await storePage(new URL(url, self.location.origin).toString(), copy);
+      broadcast({ type: "warm-progress", pages: await savedPages() });
     } catch {
-      // offline or refused: try again at the next warm
+      // offline, too slow or refused: tried again at the next round
     }
-  }
+  });
   trim(STATIC_CACHE, MAX_STATIC);
 }
 
 let warming = null;
+let queuedUrls = null;
+
+/**
+ * One saving round at a time. A request during a round is kept (the latest list) and runs once
+ * the round ends; every round ends with "warm-done" and the pages saved.
+ */
+function requestWarm(urls) {
+  if (warming) {
+    queuedUrls = urls;
+    return warming;
+  }
+  warming = (async () => {
+    let next = urls;
+    while (next) {
+      queuedUrls = null;
+      await warm(next).catch(() => {});
+      await broadcast({ type: "warm-done", pages: await savedPages() });
+      next = queuedUrls;
+    }
+  })().finally(() => {
+    warming = null;
+  });
+  return warming;
+}
 
 /** Tells every open page of the app something (e.g. pages were saved). */
 async function broadcast(message) {
@@ -237,19 +346,13 @@ async function savedPages() {
 self.addEventListener("message", (event) => {
   const data = event.data || {};
   if (data.type === "warm" && Array.isArray(data.urls)) {
-    // One saving round at a time; a request during a round starts another one after it.
-    const run = (warming || Promise.resolve()).catch(() => {}).then(() => warm(data.urls)).then(async () => broadcast({ type: "warm-done", pages: await savedPages() }));
-    warming = run;
-    run
-      .finally(() => {
-        if (warming === run) warming = null;
-      })
-      .catch(() => {});
-    event.waitUntil(run);
+    event.waitUntil(requestWarm(data.urls));
   } else if (data.type === "saved-pages") {
     event.waitUntil(savedPages().then((pages) => event.ports[0]?.postMessage({ pages })));
   } else if (data.type === "purge-pages") {
     event.waitUntil(caches.delete(PAGES_CACHE));
+  } else if (data.type === "connectivity") {
+    appOffline = data.online === false;
   } else if (data.type === "skip-waiting") {
     self.skipWaiting();
   }

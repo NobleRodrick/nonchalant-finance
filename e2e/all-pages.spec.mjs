@@ -137,6 +137,7 @@ test("Department head: every page; the Boss's pages are refused", async ({ page 
   expect(problems, problems.join("\n")).toEqual([]);
   await page.goto("/boss/people");
   await expect(page).not.toHaveURL(/\/boss\/people/);
+  await page.waitForLoadState("networkidle"); // the redirect has arrived
   const res = await page.goto(`/d/${laundry}`);
   expect(res.status()).toBe(404);
 });

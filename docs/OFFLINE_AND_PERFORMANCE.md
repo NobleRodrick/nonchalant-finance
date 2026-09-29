@@ -105,22 +105,36 @@ rendered (`renderedAt`, server clock, from `departmentPage`). A refused record i
   fetches every page of the person's departments (`warmUrls`, from the app shell) and keeps them.
 - **With their code**: each saved page's script and style files, the chunks the router loads later (named in the
   page's data as `static/chunks/…`, including route groups such as `app/(main)/…`) and the fonts of its style sheets.
-  Code files are kept under one key however their URL is written (`%5BdeptId%5D` or `[deptId]`).
-- Pages: network first (the last copy is kept); a slow network (> 12 s) gets the saved copy. A page never saved shows
+  Code files are kept under one key however their URL is written (`%5BdeptId%5D` or `[deptId]`). A page counts as
+  saved only once **all** its code is saved (otherwise it would open without its scripts).
+- **Slow or unstable connections**: 3 pages and 6 code files are fetched at a time, and every request has a time
+  limit (page 90 s, file 45 s), so one request that hangs cannot stop the others. Each saved page is announced at once
+  (the counter goes up page by page); pages still missing are tried again after a minute.
+- Pages: network first (the last copy is kept); a slow network (> 12 s) gets the saved copy. While the app knows it is
+  offline, the saved copy is shown at once (the app tells the worker: `connectivity` message). A page never saved shows
   `public/offline.html`, which lists the pages that are.
 - App code (`/_next/static`): cache first (file names change with every deployment). Router data requests: network
-  only. Writes never go through the worker.
+  only, 10 s at most (at once refused while offline), so the router falls back to loading the page. Writes never go
+  through the worker.
 - `VERSION` in `sw.js`: a new version starts with empty caches, so the pages and their code are saved again.
 - The saved pages are the signed-in person's data: deleted at sign-out and when another person signs in on the
   computer. Records not sent yet stay (sent at their author's next sign-in); signing out with records waiting asks first.
 - Registered in production builds only (`NEXT_PUBLIC_ENABLE_SW=1` in development). To try offline mode on your own
   computer: `npm run preview` (builds and starts the real app), then turn the Wi-Fi off.
 
-### Moving between pages offline — `components/offline/offline-navigation.jsx`
+### Moving between pages offline — `components/offline/offline-navigation.jsx`, `lib/navigation.js`
 
 While offline, a click on any link of the app loads that page normally instead of asking the server through the app
-router: the worker answers at once with the saved copy. Programmatic moves use `navigateTo(router, href)`
-(`lib/navigation.js`), which does the same.
+router: the worker answers at once with the saved copy. Programmatic moves use `navigateTo(router, href)`, which does
+the same.
+
+A connection that **hangs** instead of failing (weak signal, a hotspot without credit, a Wi-Fi without internet) is
+the common case in the field: the browser still says "online". So:
+- the connectivity check (`/api/health`, which does no work) counts no answer within 8 s as offline;
+- a move through the router that has not arrived after 5 s checks the connection, and if the server does not answer
+  the page is loaded normally (saved copy) — `watchNavigation`;
+- the state is remembered for the tab (sessionStorage), so a page loaded from the saved copy starts offline instead of
+  assuming a connection, and checks at once whether it is back.
 
 ### When the connection comes back — `lib/offline/connectivity.js`, `components/offline/offline-provider.jsx`
 
@@ -166,7 +180,9 @@ router: the worker answers at once with the saved copy. Programmatic moves use `
 - `e2e-offline/offline.spec.mjs` (`npm run test:offline`, production build): the pages are saved without being opened;
   then the Wi-Fi is "turned off" (browser offline and server stopped for real); the head opens every page from the menu,
   sells, undoes, records an expense with a receipt photo, reloads; the connection comes back and, without any reload,
-  everything is sent once, the page refreshes itself and says so; plus a refused record and the Boss confirming cash offline.
+  everything is sent once, the page refreshes itself and says so; a connection that **hangs** (something accepts the
+  connections on the server's port and never answers, the browser still says online): the menu links still open the
+  saved pages, quickly once the app knows; plus a refused record and the Boss confirming cash offline.
 
 ---
 
