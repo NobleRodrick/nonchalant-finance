@@ -73,7 +73,6 @@ describe.skipIf(!hasDb)("accounts: sign in, passwords, profile", () => {
 
 describe.skipIf(!hasDb)("the Boss manages people and settings", () => {
   let o;
-  let hired;
   beforeAll(async () => {
     o = await setupOrganization("People");
   });
@@ -81,21 +80,24 @@ describe.skipIf(!hasDb)("the Boss manages people and settings", () => {
   it("adds a department head with a temporary password; that person signs in and runs the department", async () => {
     await loginAs(o.boss.id);
     const email = `newhead-${Date.now()}@test.local`;
-    hired = ok(await createEmployee({ name: "New Head", email, tempPassword: "Temp98765", role: "MANAGER", memberships: [{ departmentId: o.deptB.id, isPrimary: true }] }));
-    fails(await createEmployee({ name: "Again", email, tempPassword: "Temp98765", role: "STAFF", memberships: [{ departmentId: o.deptB.id, isPrimary: true }] }), /already exists/);
-    fails(await createEmployee({ name: "Nowhere", email: `x-${Date.now()}@test.local`, tempPassword: "Temp98765", role: "STAFF", memberships: [] }), /at least one department/);
+    ok(await createEmployee({ name: "New Head", email, tempPassword: "Mango-97531", role: "MANAGER", memberships: [{ departmentId: o.deptB.id, isPrimary: true }] }));
+    fails(await createEmployee({ name: "Again", email, tempPassword: "Mango-97531", role: "STAFF", memberships: [{ departmentId: o.deptB.id, isPrimary: true }] }), /already exists/);
+    fails(await createEmployee({ name: "Nowhere", email: `x-${Date.now()}@test.local`, tempPassword: "Mango-97531", role: "STAFF", memberships: [] }), /at least one department/);
     fails(await createEmployee({ name: "Weak", email: `w-${Date.now()}@test.local`, tempPassword: "123", role: "STAFF", memberships: [{ departmentId: o.deptB.id }] }), /./);
     cookieJar.clear();
-    ok(await loginUser({ email, password: "Temp98765" }));
+    const first = ok(await loginUser({ email, password: "Mango-97531" }));
+    expect(first.redirectTo).toMatch(/^\/change-password/);
+    fails(await addDish({ departmentId: o.deptB.id, name: "Soup", unitPrice: 1000, openingPlates: 4 }), /temporary password/);
+    ok(await updatePassword({ currentPassword: "Mango-97531", newPassword: "Own-pass-2468" }));
     ok(await addDish({ departmentId: o.deptB.id, name: "Soup", unitPrice: 1000, openingPlates: 4 }));
     fails(await addDish({ departmentId: o.deptA.id, name: "Soup", unitPrice: 1000 }), /not assigned|not found|access/i);
   });
 
   it("only the Boss manages people and settings", async () => {
     await loginAs(o.manager.id);
-    fails(await createEmployee({ name: "X", email: `y-${Date.now()}@test.local`, tempPassword: "Temp98765", role: "STAFF", memberships: [{ departmentId: o.deptA.id }] }), /Boss/);
+    fails(await createEmployee({ name: "X", email: `y-${Date.now()}@test.local`, tempPassword: "Mango-97531", role: "STAFF", memberships: [{ departmentId: o.deptA.id }] }), /Boss/);
     fails(await updateOrganizationSettings({ name: "Hacked" }), /Boss/);
-    fails(await resetEmployeePassword({ employeeId: o.cashier.id, tempPassword: "Temp11111" }), /Boss/);
+    fails(await resetEmployeePassword({ employeeId: o.cashier.id, tempPassword: "Plum-11223" }), /Boss/);
   });
 
   it("resets a password, deactivates an account (signed out, cannot sign in) and reactivates it", async () => {

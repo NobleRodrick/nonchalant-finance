@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Field, inputClass, selectClass, textareaClass, Money, Plates, StatusBadge } from "@/components/kit/primitives";
+import { Field, inputClass, selectClass, Money, Plates, StatusBadge } from "@/components/kit/primitives";
 import { wholeNumber } from "@/components/kit/client";
 import { ProofUpload } from "@/components/kit/proof-upload";
 import { VoidButton } from "@/components/kit/void-button";

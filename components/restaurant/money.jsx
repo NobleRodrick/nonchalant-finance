@@ -9,7 +9,7 @@ import { Field, Money, StatCard, StatusBadge, inputClass, selectClass } from "@/
 import { useLiveRefresh, wholeNumber } from "@/components/kit/client";
 import { ProofUpload } from "@/components/kit/proof-upload";
 import { VoidButton } from "@/components/kit/void-button";
-import { MONEY_CATEGORIES, categoryLabel } from "@/data/categories";
+import { categoriesFor, categoryLabel } from "@/data/categories";
 import { formatMoney } from "@/lib/format";
 import { usePendingEffects, useRecorder } from "@/lib/offline/react";
 import { overlayDayStatus, overlayDishes, overlayMoneyRecords, overlayMoneySummary } from "@/lib/offline/overlay";
@@ -27,7 +27,7 @@ const TYPES = {
 function MoneyEntryDialog({ type, onClose, departmentId, dateKey }) {
   const record = useRecorder();
   const cfg = TYPES[type];
-  const cats = MONEY_CATEGORIES[type] || [];
+  const cats = categoriesFor(type, "RESTAURANT");
   const [f, setF] = useState({ amount: "", category: cats[0]?.id || "", paymentMethod: "CASH", counterparty: "", reference: "", description: "", files: [] });
   const [busy, setBusy] = useState(false);
   if (!cfg) return null;
@@ -129,7 +129,7 @@ function PurchaseDialog({ open, onClose, departmentId, dateKey, dishes, canAddPl
             </Field>
             <Field label="Kind" htmlFor="p-category">
               <select id="p-category" className={selectClass} value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
-                {MONEY_CATEGORIES.PURCHASE.map((c) => (
+                {categoriesFor("PURCHASE", "RESTAURANT").map((c) => (
                   <option key={c.id} value={c.id}>{c.label}</option>
                 ))}
               </select>

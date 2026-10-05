@@ -78,6 +78,22 @@ model Department {
   purchases          Purchase[]
   attachments        Attachment[]
   inventorySnapshots InventorySnapshot[]
+  venues             Venue[]
+  venuePriceRules    VenuePriceRule[]
+  venueClients       VenueClient[]
+  venueBookings      VenueBooking[]
+  venueCharges       VenueBookingCharge[]
+  venuePackages      VenuePackage[]
+  venueAssets        VenueAsset[]
+  eventAssetChecks   EventAssetCheck[]
+  assetIncidents     VenueAssetIncident[]
+  venueLeads         VenueLead[]
+  venueCashCounts    VenueCashCount[]
+  rooms              Room[]
+  roomBookings       RoomBooking[]
+  roomAssets         RoomAsset[]
+  roomAssetMoves     RoomAssetMovement[]
+  roomRepairs        RoomRepair[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -99,6 +115,15 @@ model User {
   role              UserRole              @default(HEAD)
   title             String? // job title given by the Boss (e.g. "Accountant", "Manager"); the role stays Department head
   isActive          Boolean               @default(true)
+  // Sign-in security: bumping sessionVersion signs every session out at once; a temporary
+  // password set by the Boss must be changed at the first sign-in; wrong passwords lock the
+  // account for a while (shared by every server instance, unlike an in-memory counter).
+  sessionVersion     Int       @default(0)
+  mustChangePassword Boolean   @default(false)
+  failedLoginCount   Int       @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  passwordChangedAt  DateTime?
   memberships       UserDepartment[]
   transactions      Transaction[]
   accounts          Account[]
@@ -118,6 +143,15 @@ model User {
   attachments       Attachment[]
   submittedReports  DailyReport[]         @relation("ReportSubmittedBy")
   reviewedReports   DailyReport[]         @relation("ReportReviewedBy")
+  bookingsHandled   VenueBooking[]        @relation("BookingHandledBy")
+  bookingsCreated   VenueBooking[]        @relation("BookingCreatedBy")
+  leadsHandled      VenueLead[]           @relation("LeadHandledBy")
+  assetChecks       EventAssetCheck[]     @relation("AssetCheckedBy")
+  roomBookingsMade  RoomBooking[]         @relation("RoomBookingCreatedBy")
+  expensesValidated Transaction[]         @relation("ExpenseValidatedBy")
+  roomAssetMoves    RoomAssetMovement[]   @relation("RoomAssetMovedBy")
+  roomRepairsMade   RoomRepair[]          @relation("RoomRepairCreatedBy")
+  cashCounts        VenueCashCount[]      @relation("CashCountedBy")
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -152,6 +186,7 @@ enum UserRole {
 
 enum DepartmentDomain {
   RESTAURANT
+  EVENT_VENUE
   BAR
   PRESSING
   CAR_WASH
@@ -163,7 +198,7 @@ enum DepartmentDomain {
 
 model RefreshToken {
   id        String   @id @default(uuid())
-  token     String   @unique
+  token     String   @unique // SHA-256 of the refresh token (the token itself is only in the cookie)
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
@@ -238,6 +273,18 @@ model Transaction {
   date              DateTime           @default(now())
   category          String
   receiptUrl        String?
+  receivedByName    String? // who received the money (venue payments), when not the person recording it
+  bookingId         String? // venue booking this payment, refund or event expense belongs to
+  booking           VenueBooking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  stayId            String? // rooms: the stay this payment or refund belongs to
+  stay              RoomBooking?       @relation(fields: [stayId], references: [id], onDelete: SetNull)
+  roomId            String? // rooms: the apartment an expense or income belongs to (none: shared by the house)
+  room              Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  authorizedByName  String? // who authorized the expense (as stated when recording it)
+  validatedById     String? // who checked the expense afterwards (the Boss or another head)
+  validatedBy       User?              @relation("ExpenseValidatedBy", fields: [validatedById], references: [id], onDelete: SetNull)
+  validatedAt       DateTime?
+  validationNote    String?
   status            TransactionStatus  @default(COMPLETED)
   voidedAt          DateTime?
   voidedById        String?
@@ -269,6 +316,9 @@ model Transaction {
   @@index([userId])
   @@index([accountId])
   @@index([date])
+  @@index([bookingId])
+  @@index([stayId])
+  @@index([roomId, date])
   @@map("transactions")
 }
 
@@ -828,6 +878,8 @@ enum TransactionType {
   DEBT_PAYMENT
   OTHER_EXPENSE
   CASH_HANDOVER
+  BOOKING_PAYMENT // money received from a client for a venue booking (an advance until the event)
+  BOOKING_REFUND // money given back to a client of a venue booking
 }
 
 enum PaymentMethod {
@@ -922,4 +974,598 @@ model SyncOperation {
   @@unique([organizationId, key])
   @@index([departmentId, appliedAt])
   @@map("sync_operations")
+}
+
+// ─── Event venue / banquet hall (docs/VENUE_RENTAL_PLAN.md) ──────────────────
+// Amounts are whole FCFA. Dates of events, seasons and follow-ups are calendar dates (DATE),
+// in the organization's time zone. Every row carries organizationId for tenant scoping.
+
+/// A hall of an event venue department (one to start; ready for several).
+model Venue {
+  id                  String           @id @default(uuid())
+  organizationId      String
+  departmentId        String
+  department          Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name                String
+  description         String?
+  capacity            Int? // guests
+  basePrice           Int              @default(0) // price of a date when no rule applies
+  reservationHoldDays Int              @default(7) // a reservation without deposit is held this many days
+  isActive            Boolean          @default(true)
+  priceRules          VenuePriceRule[]
+  bookings            VenueBooking[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([departmentId, name])
+  @@index([organizationId])
+  @@map("venues")
+}
+
+enum VenuePriceRuleKind {
+  WEEKDAY // a day of the week (0 = Sunday … 6 = Saturday)
+  SEASON // a date range (e.g. December holidays)
+  SPECIAL_DATE // one date (e.g. 31 December)
+}
+
+/// Price of a date: special date > season > weekday > the hall's base price.
+model VenuePriceRule {
+  id             String             @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  venueId        String
+  venue          Venue              @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  kind           VenuePriceRuleKind
+  label          String?
+  weekday        Int?
+  startDate      DateTime?          @db.Date
+  endDate        DateTime?          @db.Date
+  price          Int
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([venueId, kind])
+  @@map("venue_price_rules")
+}
+
+model VenueClient {
+  id             String         @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String?
+  phoneAlt       String?
+  email          String?
+  company        String?
+  notes          String?
+  bookings       VenueBooking[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([departmentId, name])
+  @@index([organizationId])
+  @@map("venue_clients")
+}
+
+enum VenueBookingStatus {
+  RESERVED // the date is held (until holdUntil unless a deposit is paid)
+  CONFIRMED
+  COMPLETED // the event took place: its price is revenue of the event date
+  CANCELLED // frees the date
+}
+
+/// One event on one date of a hall. No two active bookings share a hall and a date (a partial
+/// unique index in the migration: status <> CANCELLED).
+model VenueBooking {
+  id              String               @id @default(uuid())
+  organizationId  String
+  departmentId    String
+  department      Department           @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  venueId         String
+  venue           Venue                @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  clientId        String
+  client          VenueClient          @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  referenceNo     String // "B-0001"
+  eventType       String
+  eventDate       DateTime             @db.Date
+  startTime       String? // "14:00" (information)
+  endTime         String?
+  guests          Int?
+  status          VenueBookingStatus   @default(RESERVED)
+  hallPrice       Int // price of the date from the price rules when booked
+  packageId       String?
+  package         VenuePackage?        @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  packageSnapshot Json? // the package as sold: name, price, items
+  packagePrice    Int                  @default(0)
+  agreedPrice     Int // total agreed with the client (hall + package)
+  priceNote       String? // why the agreed price differs from hall + package
+  holdUntil       DateTime?            @db.Date // reserved without deposit: held until this date
+  bookedAt        DateTime             @default(now())
+  confirmedAt     DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  notes           String?
+  leadId          String?              @unique
+  lead            VenueLead?           @relation("LeadBooking", fields: [leadId], references: [id], onDelete: SetNull)
+  handledById     String?
+  handledBy       User?                @relation("BookingHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  createdById     String
+  createdBy       User                 @relation("BookingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  transactions    Transaction[]
+  charges         VenueBookingCharge[]
+  assetChecks     EventAssetCheck[]
+  incidents       VenueAssetIncident[]
+  roomBookings    RoomBooking[]        @relation("PackageRooms")
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, eventDate])
+  @@index([departmentId, status, eventDate])
+  @@index([organizationId, eventDate])
+  @@index([clientId])
+  @@map("venue_bookings")
+}
+
+enum VenueChargeKind {
+  DAMAGE // damaged or missing assets charged to the client
+  EXTRA_SERVICE
+  OTHER
+}
+
+/// An amount added to what a client owes for a booking (damages, extra services).
+model VenueBookingCharge {
+  id             String              @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  bookingId      String
+  booking        VenueBooking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  referenceNo    String // "CH-0001"
+  kind           VenueChargeKind
+  label          String
+  amount         Int
+  date           DateTime            @default(now())
+  createdById    String
+  voidedAt       DateTime?
+  voidReason     String?
+  incident       VenueAssetIncident?
+  createdAt      DateTime            @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([bookingId])
+  @@index([departmentId, date])
+  @@map("venue_booking_charges")
+}
+
+model VenuePackage {
+  id             String             @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  price          Int // added to the hall price
+  isActive       Boolean            @default(true)
+  archivedAt     DateTime?
+  items          VenuePackageItem[]
+  bookings       VenueBooking[]
+  leads          VenueLead[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([departmentId, isActive])
+  @@map("venue_packages")
+}
+
+enum VenuePackageItemKind {
+  ROOM // rooms of a rooms department (e.g. Executive Stay): quantity rooms × nights
+  SERVICE // decoration, sound, catering …
+  OTHER
+}
+
+model VenuePackageItem {
+  id        String               @id @default(uuid())
+  packageId String
+  package   VenuePackage         @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  kind      VenuePackageItemKind
+  label     String
+  quantity  Int                  @default(1)
+  nights    Int?
+  sortOrder Int                  @default(0)
+
+  @@index([packageId])
+  @@map("venue_package_items")
+}
+
+enum VenueAssetCategory {
+  CHAIRS
+  TABLES
+  DECORATION
+  SOUND
+  LIGHTING
+  FURNITURE
+  OTHER
+}
+
+/// Hall inventory checked before and after every event.
+model VenueAsset {
+  id             String                @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department            @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name           String
+  category       VenueAssetCategory
+  quantity       Int // owned, in good condition or not
+  unitValue      Int                   @default(0) // replacement value of one unit
+  notes          String?
+  isActive       Boolean               @default(true)
+  checkLines     EventAssetCheckLine[]
+  incidents      VenueAssetIncident[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([departmentId, name])
+  @@index([organizationId])
+  @@map("venue_assets")
+}
+
+enum EventCheckPhase {
+  BEFORE
+  AFTER
+}
+
+model EventAssetCheck {
+  id             String                @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department            @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  bookingId      String
+  booking        VenueBooking          @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  phase          EventCheckPhase
+  checkedById    String
+  checkedBy      User                  @relation("AssetCheckedBy", fields: [checkedById], references: [id], onDelete: Restrict)
+  checkedAt      DateTime              @default(now())
+  notes          String?
+  lines          EventAssetCheckLine[]
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([bookingId, phase])
+  @@index([departmentId, checkedAt])
+  @@map("event_asset_checks")
+}
+
+/// Per asset: units present in good condition, damaged, missing (good + damaged + missing = expected).
+model EventAssetCheckLine {
+  id       String          @id @default(uuid())
+  checkId  String
+  check    EventAssetCheck @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  assetId  String
+  asset    VenueAsset      @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  expected Int
+  good     Int
+  damaged  Int             @default(0)
+  missing  Int             @default(0)
+  note     String?
+
+  @@unique([checkId, assetId])
+  @@map("event_asset_check_lines")
+}
+
+enum AssetIncidentKind {
+  DAMAGED
+  MISSING
+}
+
+enum AssetResponsibility {
+  CLIENT
+  STAFF
+  UNKNOWN
+}
+
+enum AssetIncidentStatus {
+  OPEN // found after the event, not settled yet
+  CHARGED // charged to the client (a booking charge)
+  LOSS // recorded as a loss of the hall
+  RESOLVED // repaired / found / replaced at no cost
+}
+
+/// A difference found after an event (damaged or missing units) and how it was settled.
+model VenueAssetIncident {
+  id             String              @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  bookingId      String
+  booking        VenueBooking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  assetId        String
+  asset          VenueAsset          @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  kind           AssetIncidentKind
+  quantity       Int
+  cost           Int                 @default(0) // estimated cost (repair or replacement)
+  responsibility AssetResponsibility @default(UNKNOWN)
+  status         AssetIncidentStatus @default(OPEN)
+  chargeId       String?             @unique
+  charge         VenueBookingCharge? @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  note           String?
+  settledAt      DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([departmentId, status])
+  @@index([bookingId])
+  @@map("venue_asset_incidents")
+}
+
+enum VenueLeadStatus {
+  NEW
+  CONTACTED
+  FOLLOW_UP
+  NEGOTIATING
+  BOOKED
+  LOST
+  CANCELLED
+}
+
+/// An enquiry that is not (yet) a booking.
+model VenueLead {
+  id             String          @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  clientName     String
+  phone          String?
+  email          String?
+  enquiryDate    DateTime        @db.Date
+  proposedDate   DateTime?       @db.Date
+  eventType      String?
+  guests         Int?
+  packageId      String?
+  package        VenuePackage?   @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  priceDiscussed Int?
+  source         String?
+  handledById    String?
+  handledBy      User?           @relation("LeadHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  followUpDate   DateTime?       @db.Date
+  status         VenueLeadStatus @default(NEW)
+  closedReason   String? // why it was lost or cancelled
+  closedAt       DateTime?
+  notes          String?
+  booking        VenueBooking?   @relation("LeadBooking")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([departmentId, status])
+  @@index([departmentId, followUpDate])
+  @@index([departmentId, enquiryDate])
+  @@map("venue_leads")
+}
+
+/// The cash counted in an event venue's drawer on a day, against what it should hold (the
+/// difference is a discrepancy shown in the reports and to the Boss). One count per day; a
+/// later count of the same day replaces it.
+model VenueCashCount {
+  id             String     @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  date           DateTime   @db.Date
+  countedCash    Int
+  expectedCash   Int // what the drawer should hold at the count (opening + cash in − cash out − handed over)
+  variance       Int // counted − expected (negative: cash missing)
+  notes          String?
+  countedById    String
+  countedBy      User       @relation("CashCountedBy", fields: [countedById], references: [id], onDelete: Restrict)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([departmentId, date])
+  @@index([organizationId, date])
+  @@map("venue_cash_counts")
+}
+
+// ─── Rooms / guest house (e.g. Executive Stay) ───────────────────────────────
+
+/// A room of a rooms department.
+model Room {
+  id             String        @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name           String // number or name, e.g. "101" or "Executive suite 2"
+  roomType       String?
+  capacity       Int?
+  nightlyRate    Int           @default(0)
+  weeklyRate     Int? // suggested price of 7 nights (prices stay editable on each booking)
+  monthlyRate    Int? // suggested price of 30 nights
+  description    String?
+  state          RoomState     @default(AVAILABLE) // set by the head; reserved / occupied come from the bookings
+  stateNote      String?
+  notes          String?
+  isActive       Boolean       @default(true)
+  bookings       RoomBooking[]
+  transactions   Transaction[]
+  assets         RoomAsset[]
+  repairs        RoomRepair[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([departmentId, name])
+  @@index([organizationId])
+  @@map("rooms")
+}
+
+enum RoomState {
+  AVAILABLE
+  MAINTENANCE
+  UNAVAILABLE
+}
+
+enum RoomBookingStatus {
+  RESERVED
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+}
+
+/// A stay in a room: nights from checkIn (included) to checkOut (excluded). No two stays of a
+/// room overlap (checked under a lock per room). A free room of a venue package is a stay with
+/// complimentary = true and the venue booking it comes from.
+model RoomBooking {
+  id                    String            @id @default(uuid())
+  organizationId        String
+  departmentId          String
+  department            Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  roomId                String
+  room                  Room              @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  referenceNo           String // "RB-0001"
+  guestName             String
+  guestPhone            String?
+  guestEmail            String?
+  guestCount            Int?
+  bookingType           String            @default("NIGHT") // NIGHT | WEEK | MONTH | OTHER (how it was priced)
+  priceNote             String? // why the price differs from the apartment's rate
+  checkedInAt           DateTime?
+  checkedOutAt          DateTime?
+  checkIn               DateTime          @db.Date
+  checkOut              DateTime          @db.Date
+  status                RoomBookingStatus @default(CONFIRMED)
+  nightlyRate           Int               @default(0)
+  totalPrice            Int               @default(0)
+  complimentary         Boolean           @default(false)
+  sourceVenueBookingId  String?
+  sourceVenueBooking    VenueBooking?     @relation("PackageRooms", fields: [sourceVenueBookingId], references: [id], onDelete: SetNull)
+  notes                 String?
+  cancelledAt           DateTime?
+  cancelReason          String?
+  createdById           String
+  createdBy             User              @relation("RoomBookingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  transactions          Transaction[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([roomId, checkIn])
+  @@index([departmentId, checkIn])
+  @@index([sourceVenueBookingId])
+  @@map("room_bookings")
+}
+
+/// An asset of a rooms department: a line per apartment (roomId) or in storage (no room). `damaged`
+/// of the `quantity` units are damaged. Values are purchase values (no depreciation, owner's decision).
+model RoomAsset {
+  id             String              @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  roomId         String?
+  room           Room?               @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  name           String
+  category       String // BED, MATTRESS, TV, FRIDGE, AC, CHAIR, TABLE, CURTAINS, KITCHEN, BATHROOM, FURNITURE, OTHER
+  quantity       Int
+  damaged        Int                 @default(0)
+  unitValue      Int                 @default(0)
+  notes          String?
+  movements      RoomAssetMovement[]
+  repairs        RoomRepair[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([departmentId, roomId])
+  @@map("room_assets")
+}
+
+enum RoomAssetMovementKind {
+  BOUGHT
+  TRANSFER_OUT
+  TRANSFER_IN
+  DAMAGED
+  MISSING
+  REPAIRED
+  REPLACED
+  REMOVED
+}
+
+/// What happened to an asset line (each movement changes its counts in the same transaction).
+/// `loss` is the value that left the register (missing, removed, replaced units).
+model RoomAssetMovement {
+  id             String                @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department            @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  assetId        String
+  asset          RoomAsset             @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  referenceNo    String // "AM-0001"
+  kind           RoomAssetMovementKind
+  quantity       Int
+  value          Int                   @default(0) // value bought / moved
+  loss           Int                   @default(0)
+  cost           Int                   @default(0) // money spent (purchase, repair)
+  otherRoomId    String? // transfer: the apartment on the other side
+  transactionId  String? // when paid from the cash drawer
+  note           String?
+  date           DateTime
+  createdById    String
+  createdBy      User                  @relation("RoomAssetMovedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime              @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, date])
+  @@index([assetId])
+  @@map("room_asset_movements")
+}
+
+enum RepairPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum RepairStatus {
+  REPORTED
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+/// Something to fix in an apartment. Its actual cost, when paid from the cash drawer, is an
+/// expense of the apartment (transactionId).
+model RoomRepair {
+  id             String         @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  roomId         String
+  room           Room           @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  assetId        String?
+  asset          RoomAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  referenceNo    String // "MR-0001"
+  title          String
+  description    String?
+  reportedOn     DateTime       @db.Date
+  priority       RepairPriority @default(NORMAL)
+  status         RepairStatus   @default(REPORTED)
+  estimatedCost  Int?
+  actualCost     Int?
+  responsibleName String?
+  repairedOn     DateTime?      @db.Date
+  transactionId  String?
+  blocksRoom     Boolean        @default(false) // the apartment cannot be let until it is repaired
+  cancelReason   String?
+  createdById    String
+  createdBy      User           @relation("RoomRepairCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, status])
+  @@index([roomId])
+  @@map("room_repairs")
 }

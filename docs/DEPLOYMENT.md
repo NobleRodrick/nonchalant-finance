@@ -102,6 +102,16 @@ Then deploy the application code.
 - Stop using `prisma db push`. Schema changes are `npx prisma migrate dev --name <change>` locally, then
   `npx prisma migrate deploy` in production.
 
+## Sign-in security release (`20261020090000_auth_hardening`)
+
+1. `npx prisma migrate deploy` (additive columns on `users`; it empties `refresh_tokens`, so **everyone signs in once
+   more**: tokens are now stored as SHA-256 hashes).
+2. Push. Heads whose password was given by the Boss keep signing in with it; only heads created or reset **after** the
+   release are asked to choose their own at the first sign-in.
+3. Keep `ARCJET_KEY` on Vercel (shared per-address limits). The account lock (10 wrong passwords → 15 minutes) works
+   without it. A locked person waits, or the Boss resets the password (which also unlocks).
+4. `JWT_SECRET` must stay at least 32 random characters (the app refuses to start in production otherwise).
+
 ## Rollback
 
 Migrations 1 and 3 change the schema (3 drops `Budget` and the recurring columns); 2 and 4 change data. To roll back, restore the

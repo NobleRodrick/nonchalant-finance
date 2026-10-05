@@ -43,7 +43,7 @@ export async function reviewReport(input) {
 /** Counted cash typed in the close dialog: live preview of the variance without saving. */
 export async function previewCountedCash(input) {
   return runAction("previewCountedCash", async () => {
-    const ctx = await departmentContext(input?.departmentId, { permission: PERMISSIONS.REPORTS_READ, restaurant: true });
+    const ctx = await departmentContext(input?.departmentId, { permission: PERMISSIONS.REPORTS_READ, domain: "RESTAURANT" });
     const dateKey = dayKey(input, ctx.timeZone);
     const model = await buildDailyReport({ organizationId: ctx.user.organizationId, departmentId: ctx.department.id, dateKey, timeZone: ctx.timeZone, countedCash: parseCounted(input?.countedCash) });
     return { cash: model.cash, variance: roundMoney(model.cash.variance ?? 0) };

@@ -20,7 +20,7 @@ test("on a phone the menu opens as a drawer", async ({ page, isMobile }) => {
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Full name").fill("Phone Owner");
   await page.getByLabel("E-mail").fill(`phone-${tag}@e2e.local`);
-  await page.getByLabel("Password", { exact: true }).fill("Phone12345");
+  await page.getByLabel("Password", { exact: true }).fill("Mobile-2468a");
   await page.getByRole("button", { name: /create account and continue/i }).click();
   await page.waitForURL(/\/onboarding/);
   await page.getByLabel("Company name").fill(`Phone Company ${tag}`);
@@ -52,7 +52,7 @@ test("the sidebar is fixed on a computer screen", async ({ page, isMobile }) => 
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Full name").fill("Desk Owner");
   await page.getByLabel("E-mail").fill(`desk-${tag}@e2e.local`);
-  await page.getByLabel("Password", { exact: true }).fill("Desk123456");
+  await page.getByLabel("Password", { exact: true }).fill("Bureau-2468a");
   await page.getByRole("button", { name: /create account and continue/i }).click();
   await page.waitForURL(/\/onboarding/);
   await page.waitForLoadState("networkidle");

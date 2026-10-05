@@ -3,7 +3,7 @@ import { formatMoney, formatStatementAmount, formatSigned, formatPlates, formatP
 import { formatReference } from "@/lib/documents/sequence";
 import { dayBounds, toDateKey, startOfDateKey, addDaysToKey, periodRange, previousRange } from "@/lib/timezone";
 import { getDomain, departmentNavigation, DOMAIN_LIST } from "@/lib/domains/registry";
-import { PERMISSIONS, ROLE_PERMISSIONS, personLabel, roleHasPermission } from "@/lib/permissions";
+import { PERMISSIONS, ROLES, ROLE_PERMISSIONS, personLabel, roleHasPermission } from "@/lib/permissions";
 
 describe("formatting", () => {
   it("formats FCFA, statement negatives, signs, plates and percentages", () => {
@@ -39,9 +39,9 @@ describe("business days in Africa/Douala", () => {
 });
 
 describe("department types and roles", () => {
-  it("only the restaurant type is enabled; every type has a label and description", () => {
-    expect(DOMAIN_LIST.map((d) => d.key)).toEqual(["RESTAURANT", "BAR", "PRESSING", "CAR_WASH", "ROOM_RENTAL", "MATERIAL_RENTAL", "SHOP", "OTHER"]);
-    expect(DOMAIN_LIST.filter((d) => d.enabled).map((d) => d.key)).toEqual(["RESTAURANT"]);
+  it("the restaurant, event venue and rooms types are enabled; every type has a label and description", () => {
+    expect(DOMAIN_LIST.map((d) => d.key)).toEqual(["RESTAURANT", "EVENT_VENUE", "ROOM_RENTAL", "BAR", "PRESSING", "CAR_WASH", "MATERIAL_RENTAL", "SHOP", "OTHER"]);
+    expect(DOMAIN_LIST.filter((d) => d.enabled).map((d) => d.key)).toEqual(["RESTAURANT", "EVENT_VENUE", "ROOM_RENTAL"]);
     expect(getDomain("PRESSING").label).toBe("Pressing (dress wash)");
     expect(DOMAIN_LIST.every((d) => d.description.length > 10)).toBe(true);
   });
@@ -62,7 +62,9 @@ describe("department types and roles", () => {
       expect(roleHasPermission("ADMIN", p)).toBe(true);
       expect(roleHasPermission("HEAD", p)).toBe(false);
     }
-    expect(Object.keys(ROLE_PERMISSIONS)).toEqual(["ADMIN", "HEAD"]);
+    // Two stored roles; OWNER is only the Boss's role in a department that has no head yet.
+    expect(ROLES).toEqual(["ADMIN", "HEAD"]);
+    expect(Object.keys(ROLE_PERMISSIONS)).toEqual(["ADMIN", "HEAD", "OWNER"]);
     expect(personLabel({ role: "HEAD", title: "Accountant" })).toBe("Accountant · Department head");
     expect(personLabel({ role: "HEAD", title: null })).toBe("Department head");
     expect(personLabel({ role: "ADMIN", title: "Owner" })).toBe("Boss");

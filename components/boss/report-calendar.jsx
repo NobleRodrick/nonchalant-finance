@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
+const DAY_LABEL = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", timeZone: "UTC" });
+
 const CELL = {
   APPROVED: ["✓", "bg-emerald-500 text-white", "Approved"],
   SUBMITTED: ["●", "bg-sky-500 text-white", "Sent, waiting for you"],
@@ -14,7 +16,7 @@ const CELL = {
 
 const dayLabel = (k) => {
   const [y, m, d] = k.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "2-digit", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+  return DAY_LABEL.format(new Date(Date.UTC(y, m - 1, d)));
 };
 
 /** Departments × days grid of daily report statuses. */

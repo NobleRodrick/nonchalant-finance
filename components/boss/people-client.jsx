@@ -166,7 +166,7 @@ export function PeopleClient({ initialData, currentUserId, focusDeptId = null })
         </Field>
       </div>
       {focused && focused.isActive && !focusedHeads.length ? (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">{focused.name} has no department head. Add one, or edit a person and tick {focused.name}.</p>
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">{focused.name} has no department head: you run it yourself until you add one (or edit a person and tick {focused.name}).</p>
       ) : null}
       {!departments.length ? <p className="text-sm text-amber-700">Create a department first.</p> : null}
       <Section>

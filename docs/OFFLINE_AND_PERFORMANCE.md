@@ -192,3 +192,34 @@ The design is ready for it: operations are keyed and ordered per device and the 
 a device should also *receive* what others recorded while it was offline (a changes feed from `sync_operations` /
 `updatedAt`), plates reserved per device or refused sales shown clearly (two devices selling the last plates), and
 the day's report sent only when every device of the department has sent its records.
+
+---
+
+## 7. Many people at once (load test, 2 Oct 2026)
+
+`npm run test:load:seed` creates 180 businesses on the disposable test database, each with a Boss, an event venue
+and its head, a restaurant and its head: **540 people**. `npm run test:load` (`scripts/load-test.mjs`) then has all
+of them use a running production server (`next build && next start`) at the same time with signed sessions: venue
+heads open the dashboard, calendar, bookings and reports, book dates (some already taken, which must be refused) and
+record payments; restaurant heads open their pages, sell and record expenses; the Boss opens the overview, the
+statements and the venue's reports. Writes go through `/api/sync`, exactly as the app sends them.
+
+Results on a 2-core test machine, database on the same machine:
+
+| Scenario | Requests | Errors | Typical page (p50) | 95 % under |
+|---|---|---|---|---|
+| 540 people, an action every 20–40 s each, 2 server processes | 5 290 in 280 s | 0 | 30–110 ms | 300 ms |
+| 540 people, an action every 5–15 s each (heavy), 1 process | 9 202 in 260 s | 0 | 7 s (queueing) | 12 s |
+| 720 people (60 guest houses added: Boss + 2 heads, 5 apartments each), an action every 20–40 s, 2 processes | 7 030 in 278 s | 0 | 30–150 ms | 370 ms |
+
+- **Correct under load**: after every run, no apartment had two stays sharing a night, no stay was paid more than
+  its price, no date had two bookings (9 bookings on taken dates were refused), every
+  dish's plates matched its stock movements, every sale had its movements, and every payment was recorded once.
+- **What limits speed is the app server's CPU** (rendering pages), not the database: under the heaviest run Postgres
+  used about 10 % of one core while one Node.js process used 100 %. One process handles about 35 pages or records a
+  second here; a second process added capacity. On Vercel every request can run in its own function instance, so
+  capacity grows with traffic; the shared part is the database, used through Supabase's transaction pooler
+  (`connection_limit=1` per function, `docs/DEPLOYMENT.md`).
+- **Fixed during the test**: `lib/timezone.js` created a new `Intl.DateTimeFormat` on every date conversion, which was
+  15 % of the server's CPU; formatters are now created once per time zone and reused.
+- The test machine runs Prisma's WebAssembly query compiler (test harness); production uses Prisma's native engine.

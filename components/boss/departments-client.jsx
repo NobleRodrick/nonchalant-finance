@@ -124,7 +124,7 @@ export function DepartmentsClient({ departments, people = [] }) {
                         ))}
                       </ul>
                     ) : d.isActive ? (
-                      <div className="flex items-center gap-1 rounded bg-amber-50 px-1.5 py-1 text-amber-900" data-testid={`no-head-${d.name}`}><AlertTriangle className="h-3.5 w-3.5" /> No department head yet</div>
+                      <div className="flex items-center gap-1 rounded bg-amber-50 px-1.5 py-1 text-amber-900" data-testid={`no-head-${d.name}`}><AlertTriangle className="h-3.5 w-3.5" /> No department head yet: you run it yourself</div>
                     ) : null}
                     {d.isActive && people.some((p) => !d.heads.some((h) => h.id === p.id)) ? (
                       <select aria-label={`Add a head to ${d.name}`} className={`${selectClass} mt-1.5 h-8 text-xs`} value="" onChange={(e) => e.target.value && addHead(d, e.target.value)}>

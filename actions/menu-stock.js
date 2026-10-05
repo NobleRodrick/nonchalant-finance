@@ -49,7 +49,7 @@ export async function voidStockRecord(input) {
 
 export async function getDishHistory(input) {
   return runAction("getDishHistory", async () => {
-    const ctx = await departmentContext(input?.departmentId, { permission: PERMISSIONS.DEPARTMENT_READ, restaurant: true, read: true });
+    const ctx = await departmentContext(input?.departmentId, { permission: PERMISSIONS.DEPARTMENT_READ, domain: "RESTAURANT", read: true });
     return dishHistory({ dishId: input?.dishId, departmentId: ctx.department.id });
   });
 }

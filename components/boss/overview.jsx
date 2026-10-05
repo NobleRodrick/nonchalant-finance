@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, Money, Pill, Section, StatCard, StatusBadge } from "@/components/kit/primitives";
 import { MoneyBars } from "@/components/charts/money-bars";
 import { ReportCalendar } from "@/components/boss/report-calendar";
+import { CardFigures } from "@/components/boss/card-figures";
 import { getDomain } from "@/lib/domains/registry";
 import { formatDateKey } from "@/lib/timezone";
-import { countOf, formatPct } from "@/lib/format";
+import { formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const ALERT_ICON = { bad: OctagonAlert, warn: AlertTriangle, info: Info };
@@ -70,7 +71,7 @@ export function BossOverview({ data, dateKey, isToday }) {
                     <Link href={`/d/${c.id}`} className="font-semibold text-slate-900 hover:underline">{c.name}</Link>
                     <div className="mt-1"><Pill tone={domain.color}>{domain.label}</Pill></div>
                     <div className="mt-1.5 text-xs text-slate-500">
-                      {c.heads.length ? <>{c.heads.length === 1 ? "Head" : "Heads"}: <span className="font-medium text-slate-700">{c.heads.join(", ")}</span></> : <Link href={`/boss/people?dept=${c.id}`} className="font-medium text-amber-700 underline">No head: assign one</Link>}
+                      {c.heads.length ? <>{c.heads.length === 1 ? "Head" : "Heads"}: <span className="font-medium text-slate-700">{c.heads.join(", ")}</span></> : <>No head: <Link href={`/d/${c.id}`} className="font-medium text-emerald-700 underline">you run it</Link> · <Link href={`/boss/people?dept=${c.id}`} className="font-medium text-amber-700 underline">assign one</Link></>}
                     </div>
                   </div>
                   {domain.enabled && c.report ? (
@@ -88,12 +89,7 @@ export function BossOverview({ data, dateKey, isToday }) {
                       <div className="rounded-lg bg-rose-50 px-2 py-2"><div className="text-[11px] text-rose-800">Out</div><Money value={c.moneyOut} suffix={false} className="text-sm font-semibold" /></div>
                       <div className="rounded-lg bg-slate-900 px-2 py-2 text-white"><div className="text-[11px] text-slate-300">Result</div><Money value={c.result} suffix={false} className="text-sm font-semibold" /></div>
                     </div>
-                    <div className="mt-3 space-y-1 text-sm text-slate-600">
-                      <div className="flex justify-between"><span>Stock value</span><span><Money value={c.stockValue} /> <span className="text-xs text-slate-400">({countOf(c.plates, "plate")})</span></span></div>
-                      <div className="flex justify-between"><span>Owed by customers</span><Money value={c.debts} /></div>
-                      <div className="flex justify-between"><span>Cash handed over</span><span><Money value={c.handedOver} />{c.handoverPending ? <span className="text-xs text-amber-700"> · <Money value={c.handoverPending} suffix={false} /> to confirm</span> : null}</span></div>
-                      {c.outOfStock ? <div className="text-xs text-rose-700">{c.outOfStock === 1 ? "1 dish" : `${c.outOfStock} dishes`} out of stock</div> : null}
-                    </div>
+                    <CardFigures card={c} />
                   </>
                 ) : (
                   <p className="mt-4 text-sm text-slate-500">This department type is coming soon.</p>

@@ -32,7 +32,7 @@ function Row({ label, value }) {
   );
 }
 
-/** E-mails sent to the Boss: a daily report was sent, reports are missing, monthly statement. */
+/** E-mails: a daily report was sent, reports are missing, monthly statement, guest house daily / weekly report. */
 export default function EmailTemplate({ userName = PREVIEW.userName, type = PREVIEW.type, data = PREVIEW.data }) {
   if (type === "missing-reports") {
     return (
@@ -49,6 +49,51 @@ export default function EmailTemplate({ userName = PREVIEW.userName, type = PREV
               ))}
             </Section>
             {data.url ? <Link href={data.url} style={styles.button}>Open daily reports</Link> : null}
+          </Container>
+        </Body>
+      </Html>
+    );
+  }
+  if (type === "stay-report") {
+    const g = data.digest || {};
+    const count = (v) => <strong>{v ?? "—"}</strong>;
+    return (
+      <Html>
+        <Head />
+        <Preview>{data.departmentName}: {data.kind === "weekly" ? "weekly" : "daily"} report of {data.periodLabel}</Preview>
+        <Body style={styles.body}>
+          <Container style={styles.container}>
+            <Heading style={styles.h1}>{data.departmentName}: {data.kind === "weekly" ? "weekly" : "daily"} report</Heading>
+            <Text style={styles.text}>Hello {userName}, here is {data.periodLabel}.</Text>
+            <Section style={styles.section}>
+              <div style={styles.row}><span>Bookings made · arrivals</span>{count(`${g.bookings} · ${g.arrivals}`)}</div>
+              <div style={styles.row}><span>Occupied · available apartments (now)</span>{count(`${g.occupied} · ${g.available} of ${g.apartments}`)}</div>
+              <div style={styles.row}><span>Check-ins · check-outs</span>{count(`${g.checkIns} · ${g.checkOuts}`)}</div>
+              <div style={styles.row}><span>Occupancy</span>{count(`${g.occupancyRate}%`)}</div>
+              <Row label="Revenue generated" value={g.revenue} />
+              <Row label="Cash received" value={g.cashReceived} />
+              <Row label="Cash handed over" value={g.handedOver} />
+              <Row label="Cash still to hand over" value={g.toHandOver} />
+              <Row label="Outstanding balances" value={g.outstanding} />
+              <Row label="Expenses" value={g.expenses} />
+              <Row label="Maintenance expenses" value={g.maintenance} />
+              <Row label="Net income" value={g.netIncome} />
+              <Row label="Cash discrepancies" value={g.discrepancies} />
+            </Section>
+            {(g.byApartment || []).length ? (
+              <Section style={styles.section}>
+                <Text style={{ ...styles.text, fontWeight: "bold" }}>Revenue by apartment</Text>
+                {g.byApartment.map((a) => <Row key={a.name} label={`${a.name} (profit ${formatMoney(a.profit)})`} value={a.revenue} />)}
+              </Section>
+            ) : null}
+            {(g.pendingRepairs || []).length ? (
+              <Section style={styles.section}>
+                <Text style={{ ...styles.text, fontWeight: "bold" }}>Repairs pending</Text>
+                {g.pendingRepairs.map((r) => <Text key={`${r.room}${r.title}`} style={styles.text}>• {r.room}: {r.title} ({r.priority.toLowerCase()})</Text>)}
+              </Section>
+            ) : null}
+            {g.unvalidated ? <Text style={styles.text}>{g.unvalidated} expense(s) are waiting for validation.</Text> : null}
+            {data.url ? <Link href={data.url} style={styles.button}>Open the full report</Link> : null}
           </Container>
         </Body>
       </Html>

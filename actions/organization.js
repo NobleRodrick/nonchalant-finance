@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/prisma";
-import { getCurrentUser, hashPassword } from "@/lib/auth";
+import { getCurrentUser, hashPassword, revokeSessions } from "@/lib/auth";
 import { runAction } from "@/lib/action";
 import { requireAdmin } from "@/lib/access";
 import { forbidden, invalid, notFound, unauthorized } from "@/lib/errors";
@@ -174,13 +174,16 @@ export async function createOrganization(data) {
       for (const emp of employees) {
         const email = String(emp?.email || "").toLowerCase().trim();
         const empName = String(emp?.name || "").trim();
-        if (!email || !empName || !emp?.tempPassword) continue;
+        // An empty row is ignored; a row filled in part is an error (never a person silently left out).
+        if (!email && !empName && !emp?.tempPassword) continue;
+        if (!email || !empName || !emp?.tempPassword) throw invalid(`${empName || email || "A department head"}: name, e-mail and temporary password are required.`);
         if (!EMAIL_RE.test(email)) throw invalid(`Invalid email for ${empName}.`);
-        const weak = validatePasswordStrength(emp.tempPassword);
+        const weak = validatePasswordStrength(emp.tempPassword, { email, name: empName });
         if (weak) throw invalid(`${empName}: ${weak}`);
         if (await tx.user.findUnique({ where: { email } })) throw invalid(`A user with email ${email} already exists.`);
         const names = Array.isArray(emp.departmentNames) && emp.departmentNames.length ? emp.departmentNames : [emp.departmentName];
         const deptIds = names.map((n) => deptByName[String(n || "").trim().toLowerCase()]).filter(Boolean);
+        if (!deptIds.length) throw invalid(`${empName}: choose at least one department this person heads.`);
         const created2 = await tx.user.create({
           data: {
             name: empName,
@@ -191,9 +194,10 @@ export async function createOrganization(data) {
             role: "HEAD",
             organizationId: created.id,
             isActive: true,
+            mustChangePassword: true,
           },
         });
-        if (deptIds.length) await syncMemberships(tx, created2.id, normalizeMemberships(deptIds.map((id, i) => ({ departmentId: id, isPrimary: i === 0 }))));
+        await syncMemberships(tx, created2.id, normalizeMemberships(deptIds.map((id, i) => ({ departmentId: id, isPrimary: i === 0 }))));
       }
 
       await recordAudit(tx, {
@@ -244,18 +248,21 @@ export async function createDepartment(data) {
 export async function updateDepartment(data) {
   return runAction("updateDepartment", async () => {
     const user = await requireAdmin();
-    const existing = await db.department.findFirst({ where: { id: data?.departmentId, organizationId: user.organizationId } });
+    const existing = await db.department.findFirst({ where: { id: data?.departmentId || "-", organizationId: user.organizationId } });
     if (!existing) throw notFound("Department not found.");
     const name = String(data?.name ?? existing.name).trim();
     if (!name) throw invalid("Department name is required.");
     const update = { name, description: data?.description !== undefined ? String(data.description).trim() || null : existing.description };
     if (data?.domain && data.domain !== existing.domain) {
-      const [tx, dishes, reports] = await Promise.all([
+      const used = await Promise.all([
         db.transaction.count({ where: { departmentId: existing.id } }),
         db.menuItem.count({ where: { departmentId: existing.id } }),
         db.dailyReport.count({ where: { departmentId: existing.id } }),
+        db.venue.count({ where: { departmentId: existing.id } }),
+        db.venueBooking.count({ where: { departmentId: existing.id } }),
+        db.venueLead.count({ where: { departmentId: existing.id } }),
       ]);
-      if (tx + dishes + reports > 0) throw invalid("The department type cannot change once the department has dishes, records or reports.");
+      if (used.some((n) => n > 0)) throw invalid("The department type cannot change once the department has records (dishes, bookings, a hall, reports …).");
       update.domain = cleanDomain(data.domain);
     }
     if (data?.code !== undefined && data.code !== existing.code) update.code = await cleanCode(db, user.organizationId, data.code, existing.id);
@@ -287,7 +294,7 @@ export async function createEmployee(data) {
     const email = String(data?.email || "").toLowerCase().trim();
     if (!name || !email || !data?.tempPassword) throw invalid("Name, email, and temporary password are required.");
     if (!EMAIL_RE.test(email)) throw invalid("Enter a valid email address.");
-    const weak = validatePasswordStrength(data.tempPassword);
+    const weak = validatePasswordStrength(data.tempPassword, { email, name });
     if (weak) throw invalid(weak);
     const memberships = normalizeMemberships(data?.memberships || data?.departmentIds || (data?.departmentId ? [data.departmentId] : []));
     if (!memberships.length) throw invalid("Choose at least one department for this department head.");
@@ -305,6 +312,8 @@ export async function createEmployee(data) {
           role: "HEAD",
           organizationId: user.organizationId,
           isActive: true,
+          // The Boss knows this password: the person replaces it at the first sign-in.
+          mustChangePassword: true,
         },
       });
       await syncMemberships(tx, created.id, memberships);
@@ -324,7 +333,7 @@ export async function updateEmployee(data) {
   return runAction("updateEmployee", async () => {
     const user = await requireAdmin();
     const employee = await db.user.findFirst({
-      where: { id: data?.employeeId, organizationId: user.organizationId },
+      where: { id: data?.employeeId || "-", organizationId: user.organizationId },
       include: { memberships: true },
     });
     if (!employee) throw notFound("Person not found.");
@@ -354,7 +363,8 @@ export async function updateEmployee(data) {
         const before = new Set(employee.memberships.map((m) => m.departmentId));
         await notifyNewDepartments(tx, { boss: user, userId: employee.id, departmentIds: memberships.map((m) => m.departmentId).filter((id) => !before.has(id)) });
       }
-      if (update.isActive === false) await tx.refreshToken.deleteMany({ where: { userId: employee.id } });
+      // Deactivated: signed out at once on every device.
+      if (update.isActive === false) await revokeSessions(tx, employee.id);
       await recordAudit(tx, {
         user,
         action: "EMPLOYEE_UPDATED",
@@ -373,13 +383,18 @@ export async function updateEmployee(data) {
 export async function resetEmployeePassword(data) {
   return runAction("resetEmployeePassword", async () => {
     const user = await requireAdmin();
-    const employee = await db.user.findFirst({ where: { id: data?.employeeId, organizationId: user.organizationId } });
+    const employee = await db.user.findFirst({ where: { id: data?.employeeId || "-", organizationId: user.organizationId } });
     if (!employee) throw notFound("Employee not found.");
-    const weak = validatePasswordStrength(data?.tempPassword);
+    if (employee.id === user.id) throw invalid("Change your own password from your profile.");
+    const weak = validatePasswordStrength(data?.tempPassword, { email: employee.email, name: employee.name });
     if (weak) throw invalid(weak);
     await db.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: employee.id }, data: { passwordHash: await hashPassword(data.tempPassword) } });
-      await tx.refreshToken.deleteMany({ where: { userId: employee.id } });
+      // Signed out everywhere, unlocked, and the new temporary password must be replaced at sign-in.
+      await revokeSessions(tx, employee.id);
+      await tx.user.update({
+        where: { id: employee.id },
+        data: { passwordHash: await hashPassword(data.tempPassword), mustChangePassword: true, failedLoginCount: 0, lockedUntil: null },
+      });
       await recordAudit(tx, { user, action: "EMPLOYEE_PASSWORD_RESET", entityType: "User", entityId: employee.id });
     });
     return { id: employee.id };
@@ -410,9 +425,9 @@ export async function updateOrganizationSettings(data) {
 export async function setDepartmentHead(data) {
   return runAction("setDepartmentHead", async () => {
     const boss = await requireAdmin();
-    const dept = await db.department.findFirst({ where: { id: data?.departmentId, organizationId: boss.organizationId } });
+    const dept = await db.department.findFirst({ where: { id: data?.departmentId || "-", organizationId: boss.organizationId } });
     if (!dept) throw notFound("Department not found.");
-    const person = await db.user.findFirst({ where: { id: data?.userId, organizationId: boss.organizationId }, include: { memberships: true } });
+    const person = await db.user.findFirst({ where: { id: data?.userId || "-", organizationId: boss.organizationId }, include: { memberships: true } });
     if (!person) throw notFound("Person not found.");
     if (person.role === "ADMIN") throw invalid("The Boss oversees every department; choose a department head.");
     if (!person.isActive) throw invalid("This account is deactivated. Reactivate it first.");

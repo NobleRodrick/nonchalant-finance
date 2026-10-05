@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { login as signIn } from "./support/login.mjs";
+const login = signIn;
 
 /**
  * A department head notices a sale was a mistake and undoes it: from the receipt, from the
@@ -8,20 +10,12 @@ import { expect, test } from "@playwright/test";
 test.describe.configure({ mode: "serial" });
 
 const tag = `u${Date.now().toString(36)}`;
-const boss = { email: `undo-boss-${tag}@e2e.local`, password: "Boss12345" };
+const boss = { email: `undo-boss-${tag}@e2e.local`, password: "Baobab-1357" };
 const head = { email: `undo-head-${tag}@e2e.local`, password: "" };
 let deptId = "";
 
 async function toast(page, text) {
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: text }).first()).toBeVisible();
-}
-async function login(page, email, password) {
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.waitForLoadState("networkidle");
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.locator("form button[type=submit]").click();
 }
 const row = (page) => page.getByTestId("dish-row-Rice");
 

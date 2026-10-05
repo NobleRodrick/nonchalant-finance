@@ -11,11 +11,11 @@ const PUBLIC_PREFIXES = ["/_next", "/favicon.ico", "/logo.jpg", "/api/inngest", 
 const PUBLIC_EXACT = ["/", "/login", "/register"];
 const AUTH_ROUTES = ["/login", "/register", "/sign-in", "/sign-up"];
 
-async function isValid(token) {
+async function isValid(token, typ) {
   if (!token) return false;
   try {
-    await jwtVerify(token, getJwtSecretKey());
-    return true;
+    const { payload } = await jwtVerify(token, getJwtSecretKey(), { algorithms: ["HS256"] });
+    return payload.typ === typ;
   } catch {
     return false;
   }
@@ -25,8 +25,8 @@ export async function proxy(req) {
   const { pathname, search } = req.nextUrl;
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
-  const hasAccess = await isValid(req.cookies.get("sf_access_token")?.value);
-  const hasRefresh = hasAccess ? true : await isValid(req.cookies.get("sf_refresh_token")?.value);
+  const hasAccess = await isValid(req.cookies.get("sf_access_token")?.value, "access");
+  const hasRefresh = hasAccess ? true : await isValid(req.cookies.get("sf_refresh_token")?.value, "refresh");
 
   if (AUTH_ROUTES.includes(pathname)) {
     if (hasAccess) return NextResponse.redirect(new URL("/home", req.url));

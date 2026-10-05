@@ -31,7 +31,7 @@ export default async function ReportPage({ params, searchParams }) {
       <PageHeader
         eyebrow={department.name}
         title={isToday ? "Today's report" : `Report of ${formatDateKey(dateKey)}`}
-        description={perms.boss ? "The department's day, live. When the head sends it, you review it: approve it or return it with a note." : "Always up to date and printable at any time. At the end of the day, count the cash and send the report to the Boss."}
+        description={perms.ownerRuns ? "Always up to date and printable. You run this department: at the end of the day, count the cash and send the report; it is approved at once (you can return it to correct the day)." : perms.boss ? "The department's day, live. When the head sends it, you review it: approve it or return it with a note." : "Always up to date and printable at any time. At the end of the day, count the cash and send the report to the Boss."}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {perms.boss && saved && ["SUBMITTED", "REVIEWED", "APPROVED", "RETURNED"].includes(saved.status) ? (

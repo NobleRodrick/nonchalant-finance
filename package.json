@@ -16,7 +16,10 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
-    "test:offline": "next build --webpack && playwright test -c playwright.offline.config.mjs"
+    "test:offline": "next build --webpack && playwright test -c playwright.offline.config.mjs",
+    "db:check": "node scripts/check-schema-drift.mjs",
+    "test:load:seed": "vitest run --config tests/load/vitest.config.mjs",
+    "test:load": "node scripts/load-test.mjs"
   },
   "dependencies": {
     "@arcjet/next": "^1.13.0",

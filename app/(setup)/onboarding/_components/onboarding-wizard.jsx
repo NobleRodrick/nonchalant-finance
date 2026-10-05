@@ -154,7 +154,7 @@ export function OnboardingWizard({ ownerName }) {
           <div className="space-y-5">
             <div>
               <h2 className="text-xl font-semibold">Your department heads</h2>
-              <p className="text-sm text-slate-500">Your department heads. Everyone you add heads the departments you tick, and one person can head several. Optional: you can add people later from “People”.</p>
+              <p className="text-sm text-slate-500">Your department heads. Everyone you add heads the departments you tick, and one person can head several. Optional: a department without a head is run by you — you record its day yourself — until you assign one later from “People”.</p>
               <datalist id="onb-titles">{TITLE_SUGGESTIONS.map((t) => <option key={t} value={t} />)}</datalist>
             </div>
             {people.map((p, i) => (
@@ -185,7 +185,7 @@ export function OnboardingWizard({ ownerName }) {
                 </Field>
 
                 <div className="flex flex-wrap items-end justify-between gap-2">
-                  <Field label="Temporary password" htmlFor={`p-pass-${i}`} hint="Give it to the person; they change it after signing in.">
+                  <Field label="Temporary password" htmlFor={`p-pass-${i}`} hint="Give it to the person; they must replace it with their own at the first sign-in.">
                     <div className="flex gap-2">
                       <input id={`p-pass-${i}`} className={cn(inputClass, "w-48 font-mono")} value={p.tempPassword} onChange={(e) => setPerson(i, { tempPassword: e.target.value })} />
                       <Button type="button" variant="outline" size="icon" aria-label="Copy password" onClick={() => { navigator.clipboard?.writeText(p.tempPassword); toast.success("Copied"); }}><Copy className="h-4 w-4" /></Button>
@@ -225,8 +225,12 @@ export function OnboardingWizard({ ownerName }) {
               </div>
             ) : null}
             <ul className="space-y-2 text-sm text-slate-700">
-              <li>1. Share the sign-in details with your people. Each department head then adds the department&apos;s dishes and plates on <strong>Menu & Stock</strong>.</li>
-              <li>2. Make sure every department has a head in <strong>People</strong> or <strong>Departments</strong>: the head runs the day and sends you the daily report.</li>
+              <li>1. {created.people.length ? "Share the sign-in details with your people. " : ""}Each department&apos;s first job: its dishes and plates on <strong>Menu & Stock</strong> (restaurants), the hall and prices (venues), the apartments (guest houses).</li>
+              {departments.some((d) => !created.people.some((p) => p.departmentNames.includes(d.name))) ? (
+                <li data-testid="you-run">2. You run {departments.filter((d) => !created.people.some((p) => p.departmentNames.includes(d.name))).map((d) => d.name).join(", ")} yourself: you record the day there. When you assign a head in <strong>People</strong>, they take over and you go back to overseeing.</li>
+              ) : (
+                <li>2. Each department has a head: they run the day and send you the daily report. Their temporary password must be replaced at the first sign-in.</li>
+              )}
               <li>3. Set the cash each drawer starts with in <strong>Departments</strong>.</li>
               <li>4. Follow everything from your <strong>Overview</strong>: results, reports, cash and statements.</li>
             </ul>

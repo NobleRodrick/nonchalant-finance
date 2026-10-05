@@ -1,17 +1,15 @@
 "use client";
 
-import { Building2, Car, BedDouble, Shirt, Store, Tent, UtensilsCrossed, Wine, Check } from "lucide-react";
+import { Check } from "lucide-react";
+import { DomainIcon } from "@/components/domains/domain-icon";
 import { DOMAIN_LIST } from "@/lib/domains/registry";
 import { cn } from "@/lib/utils";
-
-const ICON = { RESTAURANT: UtensilsCrossed, BAR: Wine, PRESSING: Shirt, CAR_WASH: Car, ROOM_RENTAL: BedDouble, MATERIAL_RENTAL: Tent, SHOP: Store, OTHER: Building2 };
 
 /** Department type chooser: one card per type, "coming soon" for types not built yet. */
 export function DepartmentTypePicker({ value, onChange, disabled = false, compact = false }) {
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:grid-cols-2")} role="radiogroup" aria-label="Department type">
       {DOMAIN_LIST.map((d) => {
-        const Icon = ICON[d.key] || Building2;
         const selected = value === d.key;
         return (
           <button
@@ -28,7 +26,7 @@ export function DepartmentTypePicker({ value, onChange, disabled = false, compac
               disabled && !selected && "cursor-not-allowed opacity-50"
             )}
           >
-            <Icon className={cn("mt-0.5 h-5 w-5 shrink-0", selected ? "text-slate-900" : "text-slate-400")} />
+            <DomainIcon domain={d.key} className={cn("mt-0.5 h-5 w-5 shrink-0", selected ? "text-slate-900" : "text-slate-400")} />
             <span className="min-w-0">
               <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 {d.label}

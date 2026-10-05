@@ -1,11 +1,11 @@
 import { departmentPage, pageDate } from "@/lib/page-guards";
 import { loadDayStock } from "@/lib/restaurant/stock-service";
-import { dayStatus } from "@/lib/restaurant/day-status";
+import { dayStatus } from "@/lib/departments/day-status";
 import { formatDateKey } from "@/lib/timezone";
 import { serialize } from "@/lib/serialize";
 import { PageHeader } from "@/components/kit/primitives";
 import { DateNav } from "@/components/kit/date-nav";
-import { DayBanner } from "@/components/restaurant/day-banner";
+import { DayBanner } from "@/components/departments/day-banner";
 import { MenuStockBoard } from "@/components/restaurant/menu-stock";
 
 export const dynamic = "force-dynamic";

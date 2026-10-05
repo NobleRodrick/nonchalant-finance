@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { login as signIn } from "./support/login.mjs";
 import fs from "node:fs";
+const login = signIn;
 
 /**
  * The Boss manages the business through the screens: departments, people (add, reset password,
@@ -9,26 +11,18 @@ import fs from "node:fs";
 test.describe.configure({ mode: "serial" });
 
 const tag = `m${Date.now().toString(36)}`;
-const boss = { email: `mgr-boss-${tag}@e2e.local`, password: "Boss12345" };
+const boss = { email: `mgr-boss-${tag}@e2e.local`, password: "Baobab-1357" };
 const head = { name: "Accountant Head", email: `mgr-head-${tag}@e2e.local`, password: "" };
 let deptId = "";
 
 async function toast(page, text) {
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: text }).first()).toBeVisible();
 }
-async function login(page, email, password) {
-  await page.context().clearCookies();
-  await page.goto("/login");
-  await page.waitForLoadState("networkidle");
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.locator("form button[type=submit]").click();
-}
 
 test("the homepage presents a business platform, restaurant being the first type", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run every part of your business from one place");
-  await expect(page.getByText("Available now")).toHaveCount(1);
+  await expect(page.getByText("Available now")).toHaveCount(3); // restaurant, event venue, rooms
   await expect(page.getByText("Coming soon").first()).toBeVisible();
   for (const t of ["You, the Boss", "Your department heads", "Two roles, clearly split", "Register your business", "Add your department heads"]) {
     await expect(page.getByText(t).first()).toBeVisible();
@@ -53,7 +47,7 @@ test("the Boss registers and creates a department of each kind from Departments"
   await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Finish setup" }).click();
-  await expect(page.getByText("Make sure every department has a head")).toBeVisible();
+  await expect(page.getByTestId("you-run")).toContainText("You run Department 1 yourself");
   await page.getByRole("button", { name: /open the app/i }).click();
   await page.waitForURL(/\/boss/);
   await page.waitForLoadState("networkidle");
@@ -98,10 +92,25 @@ test("the Boss adds a department head titled Accountant from People (temporary p
 });
 
 test("the head signs in, changes the password and runs the department", async ({ page }) => {
-  await login(page, head.email, head.password);
+  // First sign-in with the temporary password: the app asks for the person's own password first.
+  await login(page, head.email, head.password, { expectFailure: true });
+  await page.waitForURL(/\/change-password/);
+  await expect(page.getByText("The Boss gave you a temporary password")).toBeVisible();
+  await page.goto(`/d/${deptId}/sell`);
+  await expect(page).toHaveURL(/\/change-password/);
+  await page.locator("#cp-current").fill(head.password);
+  await page.locator("#cp-new").fill("password123");
+  await page.locator("#cp-confirm").fill("password123");
+  await page.getByRole("button", { name: "Save my password" }).click();
+  await toast(page, "too easy to guess");
+  await page.locator("#cp-new").fill("First-own-2468");
+  await page.locator("#cp-confirm").fill("First-own-2468");
+  await page.getByRole("button", { name: "Save my password" }).click();
+  await toast(page, "Your password is set");
   await page.waitForURL(new RegExp(`/d/${deptId}`));
+  head.password = "First-own-2468";
   const nav = page.getByRole("navigation", { name: "Main navigation" });
-  await expect(nav.getByTestId("department-switcher").or(nav.getByTestId("active-department")).first()).toBeVisible();
+  await expect(nav.getByRole("button", { name: /Department 1/ }).first()).toBeVisible();
   await expect(nav).toContainText("Accountant · Department head");
   await page.goto("/profile");
   await page.waitForLoadState("networkidle");
@@ -163,7 +172,7 @@ test("the Boss sees the head's work, gets notified, exports a statement, resets 
   await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
   await toast(page, "Saved");
 
-  await login(page, head.email, head.password);
+  await login(page, head.email, head.password, { expectFailure: true });
   await toast(page, "deactivated");
   await expect(page).toHaveURL(/\/login/);
 
@@ -208,6 +217,6 @@ test("notifications: the head's report reaches the Boss's bell and opens the rev
   await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "Notifications" }).click();
   await page.getByRole("menuitem", { name: /Department 1: report of .* sent/ }).first().click();
-  await expect(page).toHaveURL(/\/boss\/daily-reports\/[0-9a-f-]+/);
+  await expect(page).toHaveURL(/\/boss\/daily-reports\/[0-9a-f-]+/, { timeout: 60_000 }); // first visit compiles the page
   await expect(page.getByRole("button", { name: /Approve/ })).toBeVisible();
 });

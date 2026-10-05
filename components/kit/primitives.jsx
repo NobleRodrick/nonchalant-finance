@@ -116,6 +116,7 @@ const STATUS = {
   VOIDED: ["Void", "bg-slate-200 text-slate-600 ring-slate-300"],
   UNPAID: ["Unpaid", "bg-rose-100 text-rose-800 ring-rose-200"],
   PARTIALLY_PAID: ["Partly paid", "bg-amber-100 text-amber-900 ring-amber-200"],
+  PARTLY_PAID: ["Deposit / partly paid", "bg-amber-100 text-amber-900 ring-amber-200"],
   PAID: ["Paid", "bg-emerald-100 text-emerald-800 ring-emerald-200"],
   CANCELLED: ["Cancelled", "bg-slate-200 text-slate-600 ring-slate-300"],
   OPEN: ["Open", "bg-emerald-100 text-emerald-800 ring-emerald-200"],
@@ -123,6 +124,17 @@ const STATUS = {
   ACTIVE: ["Active", "bg-emerald-100 text-emerald-800 ring-emerald-200"],
   INACTIVE: ["Inactive", "bg-slate-200 text-slate-600 ring-slate-300"],
   COMING_SOON: ["Coming soon", "bg-violet-100 text-violet-800 ring-violet-200"],
+  // Event venue: bookings, payments, leads
+  RESERVED: ["Reserved", "bg-amber-100 text-amber-900 ring-amber-200"],
+  COMPLETED: ["Completed", "bg-slate-200 text-slate-700 ring-slate-300"],
+  OVERPAID: ["Overpaid", "bg-violet-100 text-violet-800 ring-violet-200"],
+  REFUNDED: ["Refunded", "bg-slate-200 text-slate-600 ring-slate-300"],
+  NEW: ["New", "bg-sky-100 text-sky-800 ring-sky-200"],
+  CONTACTED: ["Contacted", "bg-cyan-100 text-cyan-800 ring-cyan-200"],
+  FOLLOW_UP: ["Follow-up required", "bg-amber-100 text-amber-900 ring-amber-200"],
+  NEGOTIATING: ["Negotiating", "bg-violet-100 text-violet-800 ring-violet-200"],
+  BOOKED: ["Booked", "bg-emerald-100 text-emerald-800 ring-emerald-200"],
+  LOST: ["Lost", "bg-rose-100 text-rose-800 ring-rose-200"],
 };
 
 export function StatusBadge({ status, label, className }) {

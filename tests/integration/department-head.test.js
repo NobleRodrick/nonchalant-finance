@@ -7,6 +7,7 @@ import { recordSale } from "@/actions/sales";
 import { recordHandover } from "@/actions/handovers";
 import { sendReportToBoss } from "@/actions/daily-report";
 import { requestCash } from "@/actions/cash-requests";
+import { updatePassword } from "@/actions/auth";
 
 /**
  * Two roles: the Boss who created the business, and department heads. Everyone the Boss adds
@@ -30,11 +31,12 @@ describe.skipIf(!hasDb)("two roles: the Boss and department heads (titles are fr
   it("the Boss adds a head with a title and several departments; the head works in each", async () => {
     await loginAs(o.boss.id);
     const email = `head2-${Date.now()}@test.local`;
-    const created = ok(await createEmployee({ name: "Two Places", email, title: "Accountant", tempPassword: "Temp98765", memberships: [{ departmentId: o.deptA.id, isPrimary: true }, { departmentId: o.deptB.id }] }));
+    const created = ok(await createEmployee({ name: "Two Places", email, title: "Accountant", tempPassword: "Mango-97531", memberships: [{ departmentId: o.deptA.id, isPrimary: true }, { departmentId: o.deptB.id }] }));
     expect(created).toMatchObject({ role: "HEAD", title: "Accountant" });
-    fails(await createEmployee({ name: "Nowhere", email: `n-${Date.now()}@test.local`, title: "Manager", tempPassword: "Temp98765", memberships: [] }), /at least one department/);
+    fails(await createEmployee({ name: "Nowhere", email: `n-${Date.now()}@test.local`, title: "Manager", tempPassword: "Mango-97531", memberships: [] }), /at least one department/);
 
     await loginAs(created.id);
+    ok(await updatePassword({ currentPassword: "Mango-97531", newPassword: "Own-pass-2468" }));
     for (const dept of [o.deptA, o.deptB]) {
       const dish = ok(await addDish({ departmentId: dept.id, name: `Dish ${dept.name}`, unitPrice: 1000, openingPlates: 5 })).dish;
       ok(await recordSale({ departmentId: dept.id, lines: [{ dishId: dish.id, quantity: 2 }], paymentMethod: "CASH", idempotencyKey: key() }));

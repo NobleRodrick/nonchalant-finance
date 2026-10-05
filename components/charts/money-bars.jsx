@@ -3,9 +3,11 @@
 import { Bar, CartesianGrid, Legend, Line, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatAmount, formatMoney } from "@/lib/format";
 
+const DAY_LABEL = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
+
 const short = (k) => {
   const [y, m, d] = k.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+  return DAY_LABEL.format(new Date(Date.UTC(y, m - 1, d)));
 };
 const axis = (v) => (Math.abs(v) >= 1e6 ? `${Math.round(v / 1e5) / 10}M` : Math.abs(v) >= 1e3 ? `${Math.round(v / 100) / 10}k` : String(v));
 

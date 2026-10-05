@@ -1,0 +1,18 @@
+import { createElement } from "react";
+import {
+  ArrowLeftRight, BarChart3, BedDouble, Bell, BookUser, Boxes, Building2, CalendarDays, Circle, ClipboardList, FileCheck2,
+  FileText, Gauge, HandCoins, History, LayoutDashboard, LayoutGrid, LineChart, Package, Settings, ShoppingCart,
+  SlidersHorizontal, Target, Users, UtensilsCrossed, Wrench,
+} from "lucide-react";
+
+/** Icons the navigation may name (lib/domains navigation entries, the Boss's own section). */
+const NAV_ICONS = {
+  ArrowLeftRight, BarChart3, BedDouble, Bell, BookUser, Boxes, Building2, CalendarDays, ClipboardList, FileCheck2, FileText,
+  Gauge, HandCoins, History, LayoutDashboard, LayoutGrid, LineChart, Package, Settings, ShoppingCart, SlidersHorizontal,
+  Target, Users, UtensilsCrossed, Wrench,
+};
+
+/** The icon named `name` (a circle for an unknown name). */
+export function NavIcon({ name, ...props }) {
+  return createElement(NAV_ICONS[name] || Circle, props);
+}

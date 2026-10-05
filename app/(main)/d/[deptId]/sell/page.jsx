@@ -1,11 +1,11 @@
 import { db } from "@/lib/prisma";
 import { departmentPage, pageDate } from "@/lib/page-guards";
-import { dayStatus } from "@/lib/restaurant/day-status";
+import { dayStatus } from "@/lib/departments/day-status";
 import { dayBounds, startOfDateKey, formatTimeInZone } from "@/lib/timezone";
 import { serialize } from "@/lib/serialize";
 import { PageHeader } from "@/components/kit/primitives";
 import { DateNav } from "@/components/kit/date-nav";
-import { DayBanner } from "@/components/restaurant/day-banner";
+import { DayBanner } from "@/components/departments/day-banner";
 import { PointOfSale } from "@/components/restaurant/pos";
 
 export const dynamic = "force-dynamic";

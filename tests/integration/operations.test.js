@@ -240,7 +240,7 @@ describe.skipIf(!hasDb)("report review, access and department types", () => {
   it("a person with two departments of different types works in each; restaurant actions are refused for other types", async () => {
     await loginAs(o.multi.id);
     ok(await addDish({ departmentId: o.deptB.id, name: "Dish B", unitPrice: 1000 }));
-    fails(await addDish({ departmentId: o.laundry.id, name: "Shirt", unitPrice: 500 }), /only available for restaurant/);
+    fails(await addDish({ departmentId: o.laundry.id, name: "Shirt", unitPrice: 500 }), /only available in restaurant departments/);
     fails(await addDish({ departmentId: o.deptA.id, name: "Intruder", unitPrice: 500 }), /not assigned/);
   });
 

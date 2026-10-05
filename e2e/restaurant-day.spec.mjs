@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { login as signIn } from "./support/login.mjs";
+const login = (page, email, password, opts) => signIn(page, email, password, { clear: false, ...opts });
 
 /**
  * The reference day of the implementation plan, recorded through the real interface by the
@@ -8,21 +10,13 @@ import { expect, test } from "@playwright/test";
 test.describe.configure({ mode: "serial" });
 
 const tag = Date.now().toString(36);
-const boss = { name: "Owner Test", email: `owner-${tag}@e2e.local`, password: "Owner12345" };
+const boss = { name: "Owner Test", email: `owner-${tag}@e2e.local`, password: "Plantain-2468" };
 const head = { name: "Head Test", email: `head-${tag}@e2e.local`, password: "" };
 const cashier = { name: "Cashier Test", email: `cashier-${tag}@e2e.local`, password: "" };
 let deptId = "";
 
 const money = (n) => `${String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, " ")}`;
 
-async function login(page, email, password) {
-  await page.goto("/login");
-  await page.waitForLoadState("networkidle");
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.locator("form button[type=submit]").click();
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"));
-}
 
 async function logout(page) {
   await page.getByRole("button", { name: "Account menu" }).click();
@@ -358,13 +352,24 @@ test("the Boss overview and statements show the same figures", async ({ page }) 
   await expect(page.getByTestId("statement")).toContainText("11 000");
 });
 
-test("a person in two departments of different types switches between them", async ({ page }) => {
+test("a person in two departments of different types: each department opens to its own sections", async ({ page }) => {
   await login(page, head.email, head.password);
-  await page.getByTestId("department-switcher").first().click();
-  await page.getByRole("menuitem", { name: "Laundry" }).click();
+  const nav = page.getByRole("navigation", { name: "Main navigation" }).first();
+  // The department of the page shown is open; another one opens with a click and shows its own sections.
+  await expect(nav.getByTestId("dept-nav-Department 1").getByRole("link", { name: "Sell" })).toBeVisible();
+  const laundry = nav.getByTestId("dept-toggle-Laundry");
+  await expect(laundry).toHaveAttribute("aria-expanded", "false");
+  await laundry.click();
+  await expect(laundry).toHaveAttribute("aria-expanded", "true");
+  await expect(nav.getByTestId("dept-nav-Laundry").getByRole("link", { name: "Sell" })).toHaveCount(0);
+  await nav.getByTestId("dept-nav-Laundry").getByRole("link", { name: "Home" }).click();
   await expect(page.getByText("The pressing (dress wash) department type is coming soon.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Sell" })).toHaveCount(0);
-  await page.getByTestId("department-switcher").first().click();
-  await page.getByRole("menuitem", { name: "Department 1" }).click();
-  await expect(page.getByRole("link", { name: "Sell" }).first()).toBeVisible();
+  // Closing a department hides its sections; the choice is remembered after a reload.
+  await nav.getByTestId("dept-toggle-Department 1").click();
+  await expect(nav.getByTestId("dept-nav-Department 1")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("navigation", { name: "Main navigation" }).first().getByTestId("dept-nav-Department 1")).toHaveCount(0);
+  await page.getByRole("navigation", { name: "Main navigation" }).first().getByTestId("dept-toggle-Department 1").click();
+  await page.getByRole("navigation", { name: "Main navigation" }).first().getByTestId("dept-nav-Department 1").getByRole("link", { name: "Sell" }).click();
+  await expect(page.getByRole("heading", { name: "Sell" })).toBeVisible();
 });

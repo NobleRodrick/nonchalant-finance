@@ -8,8 +8,9 @@ import { Sidebar } from "./sidebar";
 
 /**
  * Signed-in layout: a fixed sidebar on the left (a drawer on phones), a slim top bar with the
- * business date and notifications, and the page. The sidebar shows the active department's
- * modules (by department type and the user's role there) and, for the Boss, his own section.
+ * business date and notifications, and the page. The sidebar lists the business section and
+ * every department the person may open, each expanding to its own sections (by department
+ * type and the person's role there).
  */
 export async function AppShell({ user, children }) {
   const timeZone = orgTimezone(user);
@@ -37,17 +38,18 @@ export async function AppShell({ user, children }) {
       domainColor: domain.color,
       enabled: domain.enabled,
       role,
-      roleLabel: role === "ADMIN" ? "View only" : ROLE_LABELS.HEAD,
+      roleLabel: role === "ADMIN" ? "View only" : role === "OWNER" ? "You run it" : ROLE_LABELS.HEAD,
       nav: departmentNavigation(d, role),
     };
   });
   const canStatements = user.role === "ADMIN" || departments.some((d) => roleHasPermission(effectiveRole(user, d.id), PERMISSIONS.STATEMENTS_READ));
 
-  // The Boss runs the business, not a department: his own tools first, departments to look into.
-  const boss =
+  // The business section: the Boss's own tools; for a head, the overview of their departments
+  // (several) and the statements. Every department follows, each with its own sections.
+  const business =
     user.role === "ADMIN"
       ? [
-          { href: "/boss", label: "Overview", icon: "Gauge" },
+          { href: "/boss", label: "Overview", icon: "Gauge", exact: true },
           { href: "/boss/departments", label: "Departments", icon: "Building2" },
           { href: "/boss/people", label: "People", icon: "Users" },
           { href: "/boss/daily-reports", label: "Daily reports", icon: "FileCheck2", badge: pending[0] },
@@ -55,7 +57,10 @@ export async function AppShell({ user, children }) {
           { href: "/statements", label: "Statements", icon: "LineChart" },
           { href: "/boss/settings", label: "Settings", icon: "Settings" },
         ]
-      : [];
+      : [
+          depts.length > 1 ? { href: "/my-departments", label: "All my departments", icon: "LayoutGrid" } : null,
+          canStatements ? { href: "/statements", label: "Statements", icon: "LineChart" } : null,
+        ].filter(Boolean);
 
   // Pages kept on this computer for offline use (lib/offline, public/sw.js).
   const warmUrls =
@@ -81,8 +86,7 @@ export async function AppShell({ user, children }) {
       organizationName={user.organization?.name || "Springer Finance"}
       departments={depts}
       lastDepartmentId={user.activeDepartmentId || null}
-      boss={boss}
-      canStatements={canStatements}
+      business={business}
       notifications={{ items: notifications.items.map((n) => ({ id: n.id, title: n.title, body: n.body, href: n.href, read: Boolean(n.readAt), createdAt: n.createdAt.toISOString() })), unread: notifications.unread }}
       businessDate={formatDateKey(toDateKey(new Date(), timeZone))}
     >

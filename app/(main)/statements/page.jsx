@@ -4,24 +4,14 @@ import { requirePageUser, pageDate } from "@/lib/page-guards";
 import { readableDepartmentIds, effectiveRole } from "@/lib/access";
 import { roleHasPermission, PERMISSIONS } from "@/lib/permissions";
 import { buildStatements } from "@/lib/finance/statements";
-import { addDaysToKey, isDateKey, periodRange, formatDateKey } from "@/lib/timezone";
+import { formatDateKey } from "@/lib/timezone";
+import { resolvePeriod } from "@/lib/reports/periods";
 import { serialize } from "@/lib/serialize";
 import { PageHeader } from "@/components/kit/primitives";
 import { StatementsView } from "@/components/reports/statements";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Statements" };
-
-function resolveRange(sp, todayKey) {
-  const preset = sp?.period || "month";
-  if (preset === "custom" && isDateKey(sp?.from) && isDateKey(sp?.to)) return { preset, fromKey: sp.from <= sp.to ? sp.from : sp.to, toKey: sp.from <= sp.to ? sp.to : sp.from };
-  if (preset === "today") return { preset, fromKey: todayKey, toKey: todayKey };
-  if (preset === "yesterday") return { preset, fromKey: addDaysToKey(todayKey, -1), toKey: addDaysToKey(todayKey, -1) };
-  if (preset === "week") return { preset, ...periodRange("week", todayKey) };
-  if (preset === "last-month") return { preset, ...periodRange("month", addDaysToKey(periodRange("month", todayKey).fromKey, -1)) };
-  if (preset === "year") return { preset, fromKey: `${todayKey.slice(0, 4)}-01-01`, toKey: `${todayKey.slice(0, 4)}-12-31` };
-  return { preset: "month", ...periodRange("month", todayKey) };
-}
 
 export default async function StatementsPage({ searchParams }) {
   const sp = await searchParams;
@@ -34,7 +24,7 @@ export default async function StatementsPage({ searchParams }) {
   if (!departments.length) redirect("/home");
   const wanted = String(sp?.dept || "all");
   const scope = wanted === "all" ? departments : departments.filter((d) => wanted.split(",").includes(d.id));
-  const range = resolveRange(sp, todayKey);
+  const range = resolvePeriod(sp, todayKey);
   const statement = await buildStatements({ organizationId: user.organizationId, departments: scope.length ? scope : departments, fromKey: range.fromKey, toKey: range.toKey, timeZone });
   return (
     <div>

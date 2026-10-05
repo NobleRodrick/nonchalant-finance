@@ -1,6 +1,6 @@
 import { db } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { resolveDepartment } from "@/lib/access";
+import { PASSWORD_CHANGE_MESSAGE, resolveDepartment } from "@/lib/access";
 import { storeAttachment } from "@/lib/attachments";
 import { ActionError } from "@/lib/errors";
 import { logEvent, newErrorId } from "@/lib/observability";
@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request) {
   const user = await getCurrentUser();
   if (!user?.organizationId) return Response.json({ error: "Please sign in again." }, { status: 401 });
+  if (user.mustChangePassword) return Response.json({ error: PASSWORD_CHANGE_MESSAGE }, { status: 403 });
   try {
     const form = await request.formData();
     const { departmentId } = await resolveDepartment(user, form.get("departmentId") || null);

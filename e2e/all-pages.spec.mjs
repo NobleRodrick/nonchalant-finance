@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { login as signIn } from "./support/login.mjs";
 import AxeBuilder from "@axe-core/playwright";
+const login = (page, email, password, opts) => signIn(page, email, password, { clear: false, ...opts });
 
 /**
  * Every page opens without a server error, an error screen, a console error or a serious
@@ -10,20 +12,12 @@ import AxeBuilder from "@axe-core/playwright";
 test.describe.configure({ mode: "serial" });
 
 const tag = `p${Date.now().toString(36)}`;
-const boss = { email: `smoke-boss-${tag}@e2e.local`, password: "Boss12345" };
+const boss = { email: `smoke-boss-${tag}@e2e.local`, password: "Baobab-1357" };
 const people = {};
 let dept = "";
 let laundry = "";
 const SHOTS = process.env.E2E_SCREENSHOTS;
 
-async function login(page, email, password) {
-  await page.goto("/login");
-  await page.waitForLoadState("networkidle");
-  await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.locator("form button[type=submit]").click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"));
-}
 
 async function visitAll(page, paths, { axe = false, shots = "" } = {}) {
   const problems = [];
@@ -101,6 +95,7 @@ test("setup: owner, departments, two department heads (one heads two departments
   await d.getByRole("button", { name: "Add dish" }).click();
   await expect(page.getByTestId("dish-row-Dish 1")).toBeVisible();
   await page.goto(`/d/${dept}/sell`);
+  await page.waitForLoadState("networkidle"); // the first visit compiles the page: tap once it is interactive
   await page.getByRole("button", { name: "Add Dish 1" }).click();
   await page.getByRole("button", { name: /Record sale/ }).click();
   await expect(page.getByRole("dialog")).toContainText("recorded");
@@ -148,7 +143,7 @@ test("A head of two departments: an overview of both, every page in each, full r
   await expect(page).toHaveURL(/\/d\/|\/my-departments/);
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   await expect(nav).toContainText("Accountant · Department head");
-  await nav.getByRole("link", { name: "All my departments (2)" }).click();
+  await nav.getByRole("link", { name: "All my departments" }).click();
   await expect(page.getByTestId("my-departments")).toContainText("Department 1");
   await expect(page.getByTestId("my-departments")).toContainText("Laundry");
   const problems = await visitAll(page, ["/my-departments", `/d/${dept}`, `/d/${dept}/sell`, `/d/${dept}/menu-stock`, `/d/${dept}/money`, `/d/${dept}/debts`, `/d/${dept}/cash-handover`, `/d/${dept}/report`, `/d/${dept}/history`, `/d/${laundry}`, "/statements", "/profile"], { axe: true, shots: "multihead" });

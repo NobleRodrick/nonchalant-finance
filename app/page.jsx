@@ -1,8 +1,8 @@
 import Link from "next/link";
 import {
-  ArrowRight, BedDouble, Building2, Car, CheckCircle2, ClipboardList, Eye, FileCheck, HandCoins, LineChart, Shirt,
-  ShieldCheck, Sparkles, Store, Tent, UserCog, UtensilsCrossed, Wine,
+  ArrowRight, CheckCircle2, ClipboardList, Eye, FileCheck, HandCoins, LineChart, ShieldCheck, Sparkles, UserCog,
 } from "lucide-react";
+import { DomainIcon } from "@/components/domains/domain-icon";
 import { Button } from "@/components/ui/button";
 import { PublicHeader } from "@/components/public-header";
 import { getCurrentUser } from "@/lib/auth";
@@ -10,7 +10,6 @@ import { DOMAIN_LIST } from "@/lib/domains/registry";
 
 export const dynamic = "force-dynamic";
 
-const TYPE_ICON = { RESTAURANT: UtensilsCrossed, BAR: Wine, PRESSING: Shirt, CAR_WASH: Car, ROOM_RENTAL: BedDouble, MATERIAL_RENTAL: Tent, SHOP: Store, OTHER: Building2 };
 
 const ROLES = [
   {
@@ -85,13 +84,13 @@ export default async function Home() {
           </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             {[
-              ["Department 1", "Restaurant", UtensilsCrossed, "Report approved", "58 000"],
-              ["Department 2", "Bar", Wine, "Coming soon", null],
-              ["Department 3", "Pressing", Shirt, "Coming soon", null],
-            ].map(([name, type, Icon, status, result]) => (
+              ["Restaurant", "Restaurant", "RESTAURANT", "Report approved", "58 000"],
+              ["Salle des fêtes", "Event venue", "EVENT_VENUE", "3 events this month", "450 000"],
+              ["Bar", "Bar", "BAR", "Coming soon", null],
+            ].map(([name, type, domain, status, result]) => (
               <div key={name} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><Icon className="h-4 w-4" /></span>
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700"><DomainIcon domain={domain} className="h-4 w-4" /></span>
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold">{name}</div>
                     <div className="text-[11px] text-slate-500">{type}</div>
@@ -113,15 +112,14 @@ export default async function Home() {
           <h2 className="text-center text-2xl font-bold sm:text-3xl">One business, many kinds of departments</h2>
           <p className="mx-auto mt-2 max-w-2xl text-center text-slate-600">
             Each department has a type, which gives it the right screens, stock and daily report.
-            Restaurant departments are ready today; the other types are on the way.
+            Restaurants and event venues are ready today; the other types are on the way.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {DOMAIN_LIST.map((d) => {
-              const Icon = TYPE_ICON[d.key] || Building2;
               return (
                 <div key={d.key} className={`rounded-xl border p-4 ${d.enabled ? "border-emerald-300 bg-emerald-50/60" : "border-slate-200"}`}>
                   <div className="flex items-center justify-between">
-                    <Icon className={`h-6 w-6 ${d.enabled ? "text-emerald-700" : "text-slate-400"}`} />
+                    <DomainIcon domain={d.key} className={`h-6 w-6 ${d.enabled ? "text-emerald-700" : "text-slate-400"}`} />
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${d.enabled ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600"}`}>
                       {d.enabled ? "Available now" : "Coming soon"}
                     </span>

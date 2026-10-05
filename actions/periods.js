@@ -44,7 +44,7 @@ export async function createAccountingPeriod(input) {
 
 async function setStatus(periodId, status) {
   const user = await requireAdmin();
-  const period = await db.accountingPeriod.findFirst({ where: { id: periodId, organizationId: user.organizationId } });
+  const period = await db.accountingPeriod.findFirst({ where: { id: periodId || "-", organizationId: user.organizationId } });
   if (!period) throw notFound("Period not found.");
   if (period.status === status) return period;
   if (status === "CLOSED") {

@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { EmptyState, Money, Section, StatusBadge, textareaClass } from "@/components/kit/primitives";
 import { useOutboxOps, useRecorder } from "@/lib/offline/react";
 import { STATUS } from "@/lib/offline/status";
+import { formatMoney } from "@/lib/format";
 
 export function CashReceived({ pending: serverPending, recent, perDept, monthLabel }) {
   const record = useRecorder();
@@ -31,7 +32,7 @@ export function CashReceived({ pending: serverPending, recent, perDept, monthLab
   };
   return (
     <div className="space-y-6">
-      <Section title={`Waiting for your confirmation (${pending.length})`} description={pending.length ? `Total ${pending.reduce((s, h) => s + h.amount, 0).toLocaleString("fr-FR")} FCFA` : null}>
+      <Section title={`Waiting for your confirmation (${pending.length})`} description={pending.length ? `Total ${formatMoney(pending.reduce((s, h) => s + h.amount, 0))}` : null}>
         {pending.length === 0 ? (
           <EmptyState title="Nothing to confirm" description="Handovers appear here when a department records cash given to you." />
         ) : (

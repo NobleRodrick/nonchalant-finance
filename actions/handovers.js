@@ -21,7 +21,7 @@ export async function reviewHandover(input) {
 /** Handovers of one department (newest first). */
 export async function listHandovers({ departmentId }) {
   const res = await runAction("listHandovers", async () => {
-    const ctx = await departmentContext(departmentId, { permission: PERMISSIONS.DEPARTMENT_READ, restaurant: true, read: true });
+    const ctx = await departmentContext(departmentId, { permission: PERMISSIONS.DEPARTMENT_READ, read: true });
     return db.cashHandover.findMany({
       where: { departmentId: ctx.department.id },
       include: { user: { select: { name: true } } },

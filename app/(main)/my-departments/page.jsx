@@ -5,7 +5,7 @@ import { requirePageUser, pageDate } from "@/lib/page-guards";
 import { accessibleDepartments } from "@/lib/access";
 import { getDomain } from "@/lib/domains/registry";
 import { summarizeMoney } from "@/lib/finance/money-math";
-import { dayStatus } from "@/lib/restaurant/day-status";
+import { dayStatus } from "@/lib/departments/day-status";
 import { rangeBounds, formatDateKey } from "@/lib/timezone";
 import { Money, PageHeader, Pill, StatusBadge } from "@/components/kit/primitives";
 

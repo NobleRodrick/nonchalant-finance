@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
+import { effectiveRole } from "@/lib/access";
 import { db } from "@/lib/prisma";
 import { listCashRequests, periodLabel } from "@/lib/finance/cash-requests";
 import { departmentPage, pageDate, requirePageUser } from "@/lib/page-guards";
 import { drawerNow } from "@/lib/finance/posting-service";
-import { dayStatus } from "@/lib/restaurant/day-status";
+import { dayStatus } from "@/lib/departments/day-status";
 import { toDateKey, formatDateKey, formatTimeInZone } from "@/lib/timezone";
 import { serialize } from "@/lib/serialize";
 import { PageHeader } from "@/components/kit/primitives";
-import { DayBanner } from "@/components/restaurant/day-banner";
+import { DayBanner } from "@/components/departments/day-banner";
 import { CashBoard } from "@/components/restaurant/cash";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +16,10 @@ export const metadata = { title: "Cash to Boss" };
 
 export default async function CashHandoverPage({ params }) {
   const { deptId } = await params;
-  // The Boss receives cash; he does not hand it over. His view is Boss → Cash received.
+  // The Boss receives cash; he does not hand it over (his view is Boss → Cash received), except
+  // in a department he runs himself (no head yet): there he takes the cash out of the drawer.
   const viewer = await requirePageUser();
-  if (viewer.role === "ADMIN") redirect(`/boss/cash?dept=${deptId}`);
+  if (effectiveRole(viewer, deptId) === "ADMIN") redirect(`/boss/cash?dept=${deptId}`);
   const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "cash" });
   const { todayKey, isToday, timeZone } = pageDate(user, null);
   const [drawer, handovers, status, requests] = await Promise.all([
