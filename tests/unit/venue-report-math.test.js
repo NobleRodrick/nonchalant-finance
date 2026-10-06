@@ -27,8 +27,8 @@ describe("venue report math", () => {
     expect(cf).toMatchObject({ received: 825000, paidOut: 75000, net: 750000, handedOver: 150000, handoverConfirmed: 100000, handoverPending: 50000, disputed: 7000, closingCash: 10000 + 525000 - 75000 - 150000 });
     const v = cashVerification({ receipts: [{ receivedBy: "Aline", method: "CASH", amount: 300000 }, { receivedBy: null, method: "MOMO", amount: 5000 }, { receivedBy: "Aline", method: "MOMO", amount: 1000 }], counts: [{ variance: -5000 }, { variance: 2000 }], cashFlow: cf, drawerNow: { shouldRemain: -3 } });
     expect(v.byPerson).toEqual([
-      { receivedBy: "Aline", CASH: 300000, MOMO: 1000, BANK_TRANSFER: 0, total: 301000, count: 2 },
-      { receivedBy: "Unknown", CASH: 0, MOMO: 5000, BANK_TRANSFER: 0, total: 5000, count: 1 },
+      { receivedBy: "Aline", CASH: 300000, MOMO: 1000, BANK_TRANSFER: 0, OTHER: 0, total: 301000, count: 2 },
+      { receivedBy: "Unknown", CASH: 0, MOMO: 5000, BANK_TRANSFER: 0, OTHER: 0, total: 5000, count: 1 },
     ]);
     expect(v).toMatchObject({ countVariance: -3000, discrepancies: 3000 + 7000, toHandOver: 0 });
   });

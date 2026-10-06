@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 /** Pieces of printed documents (receipts, statements) shared by every department type. */
-export const METHOD = { CASH: "Cash", MOMO: "Mobile Money", BANK_TRANSFER: "Bank transfer" };
+export const METHOD = { CASH: "Cash", MOMO: "Mobile Money", BANK_TRANSFER: "Bank transfer", OTHER: "Other" };
 
 export function DocumentRow({ label, value, strong = false }) {
   return (

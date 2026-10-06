@@ -3,15 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { UserPlus, Pencil, KeyRound, Loader2, Copy, Star, Search } from "lucide-react";
+import { UserPlus, Pencil, KeyRound, Loader2, Copy, Star, Search, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { createEmployee, updateEmployee, resetEmployeePassword } from "@/actions/organization";
+import { createEmployee, updateEmployee, resetEmployeePassword, setHeadRights } from "@/actions/organization";
 import { generateTempPassword } from "@/lib/password-utils";
 import { DataTable, Field, Pill, Section, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
 import { getDomain } from "@/lib/domains/registry";
-import { ROLE_LABELS, TITLE_SUGGESTIONS } from "@/lib/permissions";
+import { ALL_GRANTS, GRANTS, ROLE_LABELS, TITLE_SUGGESTIONS } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 
 /**
@@ -49,6 +49,60 @@ function DepartmentPicker({ departments, value, onChange }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * What a head may do in each of their departments beyond the daily work (approve expenses, void
+ * money records, change prices, export, archive). Everything is on until the Boss switches it off.
+ */
+function RightsDialog({ person, onClose, onSaved }) {
+  const [rights, setRights] = useState(() => Object.fromEntries(person.memberships.map((m) => [m.departmentId, m.grants || ALL_GRANTS])));
+  const [busy, setBusy] = useState(false);
+  const toggle = (deptId, g) => setRights((r) => ({ ...r, [deptId]: r[deptId].includes(g) ? r[deptId].filter((x) => x !== g) : [...r[deptId], g] }));
+  const save = async () => {
+    setBusy(true);
+    for (const m of person.memberships) {
+      const before = (m.grants || ALL_GRANTS).slice().sort().join();
+      if (before === rights[m.departmentId].slice().sort().join()) continue;
+      const res = await setHeadRights({ employeeId: person.id, departmentId: m.departmentId, grants: rights[m.departmentId] });
+      if (!res?.success) {
+        setBusy(false);
+        return toast.error(res?.error || "The rights could not be saved.");
+      }
+    }
+    setBusy(false);
+    toast.success(`Rights of ${person.name} saved.`);
+    onSaved();
+  };
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Rights of {person.name}</DialogTitle>
+          <DialogDescription>The daily work of each department is always allowed. Tick what else {person.name} may do there.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          {person.memberships.map((m) => (
+            <fieldset key={m.departmentId} className="rounded-lg border border-slate-200 p-3" data-testid={`rights-${m.department?.name}`}>
+              <legend className="px-1 text-sm font-semibold">{m.department?.name}</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ALL_GRANTS.map((g) => (
+                  <label key={g} className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={rights[m.departmentId].includes(g)} onChange={() => toggle(m.departmentId, g)} />
+                    <span><span className="font-medium">{GRANTS[g].label}</span><span className="block text-xs text-slate-500">{GRANTS[g].description}</span></span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={save} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save rights</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -126,6 +180,7 @@ function PersonDialog({ onClose, departments, person, onSaved, defaultDeptId }) 
 export function PeopleClient({ initialData, currentUserId, focusDeptId = null }) {
   const router = useRouter();
   const [dialog, setDialog] = useState(null); // { person } | { person: null }
+  const [rightsOf, setRightsOf] = useState(null);
   const departments = initialData?.departments || [];
   const allUsers = initialData?.users || [];
   const [deptFilter, setDeptFilter] = useState(focusDeptId || "");
@@ -217,6 +272,7 @@ export function PeopleClient({ initialData, currentUserId, focusDeptId = null })
               render: (u) => (
                 <div className="flex justify-end gap-1">
                   <Button size="sm" variant="outline" onClick={() => setDialog({ person: u })}><Pencil className="h-3.5 w-3.5" /> Edit</Button>
+                  {u.role === "HEAD" && u.memberships.length ? <Button size="sm" variant="outline" onClick={() => setRightsOf(u)} aria-label={`Rights of ${u.name}`}><ShieldCheck className="h-3.5 w-3.5" /> Rights</Button> : null}
                   {u.id !== currentUserId ? <Button size="sm" variant="ghost" onClick={() => resetPassword(u)}><KeyRound className="h-3.5 w-3.5" /> Reset password</Button> : null}
                 </div>
               ),
@@ -226,6 +282,7 @@ export function PeopleClient({ initialData, currentUserId, focusDeptId = null })
           empty={deptFilter || q ? "Nobody matches." : "Nobody yet."}
         />
       </Section>
+      {rightsOf ? <RightsDialog key={rightsOf.id} person={rightsOf} onClose={() => setRightsOf(null)} onSaved={() => { setRightsOf(null); router.refresh(); }} /> : null}
       {dialog ? (
         <PersonDialog
           key={dialog.person?.id || "new"}

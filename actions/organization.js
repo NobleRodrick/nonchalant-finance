@@ -8,8 +8,10 @@ import { requireAdmin } from "@/lib/access";
 import { forbidden, invalid, notFound, unauthorized } from "@/lib/errors";
 import { recordAudit } from "@/lib/audit";
 import { notifyUsers } from "@/lib/notifications";
+import { ensureBuildings } from "@/lib/property/unit-service";
 import { DOMAIN_LIST, getDomain } from "@/lib/domains/registry";
 import { validatePasswordStrength } from "@/lib/password-utils";
+import { cleanGrants } from "@/lib/permissions";
 
 const TITLE_MAX = 60;
 const DOMAINS = DOMAIN_LIST.map((d) => d.key);
@@ -74,6 +76,8 @@ async function createDepartmentRecord(tx, { user, organizationId, name, domain, 
   await tx.account.create({
     data: { name: "Cash drawer", type: "CURRENT", balance: 0, isDefault: true, organizationId, departmentId: dept.id, userId: user.id },
   });
+  // Property rental: the owner's buildings are ready (renamed or added to later).
+  if (domain === "PROPERTY_RENTAL") await ensureBuildings(tx, { user: { ...user, organizationId }, department: dept });
   return dept;
 }
 
@@ -445,3 +449,27 @@ export async function setDepartmentHead(data) {
     return { departmentId: dept.id, userId: person.id, removed: Boolean(data?.remove) };
   });
 }
+
+/**
+ * The Boss sets what a head may do in one department beyond the daily work (lib/permissions
+ * GRANTS: approve expenses, void money records, change prices, export, archive).
+ */
+export async function setHeadRights(data) {
+  return runAction("setHeadRights", async () => {
+    const boss = await requireAdmin();
+    const membership = await db.userDepartment.findFirst({
+      where: { userId: data?.employeeId || "-", departmentId: data?.departmentId || "-", user: { organizationId: boss.organizationId }, department: { organizationId: boss.organizationId } },
+      include: { user: { select: { id: true, name: true, role: true } }, department: { select: { id: true, name: true } } },
+    });
+    if (!membership) throw notFound("This person does not head this department.");
+    if (membership.user.role === "ADMIN") throw invalid("The Boss always has every right.");
+    const grants = cleanGrants(data?.grants);
+    await db.$transaction(async (tx) => {
+      await tx.userDepartment.update({ where: { id: membership.id }, data: { grants } });
+      await recordAudit(tx, { user: boss, departmentId: membership.departmentId, action: "HEAD_RIGHTS_CHANGED", entityType: "User", entityId: membership.userId, before: { grants: membership.grants }, after: { grants } });
+    });
+    revalidatePath("/", "layout");
+    return { employeeId: membership.userId, departmentId: membership.departmentId, grants };
+  });
+}
+

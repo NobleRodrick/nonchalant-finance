@@ -32,7 +32,7 @@ function Row({ label, value }) {
   );
 }
 
-/** E-mails: a daily report was sent, reports are missing, monthly statement, guest house daily / weekly report. */
+/** E-mails: a daily report was sent, reports are missing, monthly statement, guest house daily / weekly report, department period report. */
 export default function EmailTemplate({ userName = PREVIEW.userName, type = PREVIEW.type, data = PREVIEW.data }) {
   if (type === "missing-reports") {
     return (
@@ -49,6 +49,37 @@ export default function EmailTemplate({ userName = PREVIEW.userName, type = PREV
               ))}
             </Section>
             {data.url ? <Link href={data.url} style={styles.button}>Open daily reports</Link> : null}
+          </Container>
+        </Body>
+      </Html>
+    );
+  }
+  if (type === "period-report") {
+    // Generic department report: sections of rows ({ label, value, money }) and lists of lines.
+    const word = { daily: "daily", weekly: "weekly", monthly: "monthly" }[data.kind] || "";
+    return (
+      <Html>
+        <Head />
+        <Preview>{data.heading || `${data.departmentName}: ${word} report of ${data.periodLabel}`}</Preview>
+        <Body style={styles.body}>
+          <Container style={styles.container}>
+            <Heading style={styles.h1}>{data.heading || `${data.departmentName}: ${word} report`}</Heading>
+            <Text style={styles.text}>Hello {userName}, {data.intro || `here is ${data.periodLabel}.`}</Text>
+            {(data.sections || []).map((sec) => (
+              <Section key={sec.title} style={styles.section}>
+                <Text style={{ ...styles.text, fontWeight: "bold" }}>{sec.title}</Text>
+                {sec.rows.map((r) =>
+                  r.money ? <Row key={r.label} label={r.label} value={r.value} /> : <div key={r.label} style={styles.row}><span>{r.label}</span><strong>{r.value ?? "—"}</strong></div>
+                )}
+              </Section>
+            ))}
+            {(data.lists || []).filter((l) => l.items.length).map((l) => (
+              <Section key={l.title} style={styles.section}>
+                <Text style={{ ...styles.text, fontWeight: "bold" }}>{l.title}</Text>
+                {l.items.map((x) => <Text key={x} style={styles.text}>• {x}</Text>)}
+              </Section>
+            ))}
+            {data.url ? <Link href={data.url} style={styles.button}>{data.button || "Open the full report"}</Link> : null}
           </Container>
         </Body>
       </Html>

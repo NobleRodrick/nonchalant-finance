@@ -62,7 +62,51 @@ function RoomsFigures({ c }) {
   );
 }
 
-const FIGURES = { RESTAURANT: RestaurantFigures, EVENT_VENUE: VenueFigures, ROOM_RENTAL: RoomsFigures };
+/** Event rental: events today, money from customers, what they owe, cash to hand over, items out, warnings. */
+function RentalFigures({ c }) {
+  const r = c.rental;
+  if (!r) return null;
+  const urgent = r.warnings.filter((w) => w.tone === "bad");
+  return (
+    <>
+      <Line label="Events today">{r.events}</Line>
+      <Line label="Received from customers"><Money value={r.receivedFromClients} /></Line>
+      <Line label="Owed by customers"><Money value={r.outstanding} />{r.overdue ? <span className="text-xs text-rose-700"> · <Money value={r.overdue} suffix={false} /> overdue</span> : null}</Line>
+      <Line label="Cash to hand over"><Money value={r.toHandOver} /></Line>
+      <Handed c={c} />
+      <Line label="Items out at events">{r.unitsOut}</Line>
+      {r.discrepancies ? <div className="text-xs font-medium text-rose-700">Cash discrepancies: <Money value={r.discrepancies} /></div> : null}
+      {urgent.map((w) => <div key={w.key} className="text-xs font-medium text-rose-700">{w.title}</div>)}
+      <div className="pt-1 text-xs text-slate-500">
+        {[r.openIncidents ? `${countOf(r.openIncidents, "damage")} to settle` : null, r.unvalidated ? `${countOf(r.unvalidated, "expense")} to approve` : null, r.warnings.length - urgent.length ? `${countOf(r.warnings.length - urgent.length, "other point")} to look at` : null].filter(Boolean).join(" · ") || "Nothing else to look at"}
+      </div>
+    </>
+  );
+}
+
+/** Property rental: occupancy, rent collected today, what tenants owe, deposits held, cash, alerts. */
+function PropertyFigures({ c }) {
+  const r = c.property;
+  if (!r) return null;
+  const urgent = r.warnings.filter((w) => w.tone === "bad");
+  return (
+    <>
+      <Line label="Occupied">{r.occupied} / {r.offices} <span className="text-xs text-slate-400">({r.vacant} vacant)</span></Line>
+      <Line label="Rent collected today"><Money value={r.collected} /></Line>
+      <Line label="Owed by tenants"><Money value={r.owed} />{r.overdue ? <span className="text-xs text-rose-700"> · <Money value={r.overdue} suffix={false} /> overdue</span> : null}</Line>
+      <Line label="Deposits held"><Money value={r.depositsHeld} /></Line>
+      <Line label="Cash to hand over"><Money value={r.toHandOver} /></Line>
+      <Handed c={c} />
+      {r.discrepancies ? <div className="text-xs font-medium text-rose-700">Cash discrepancies: <Money value={r.discrepancies} /></div> : null}
+      {urgent.map((w) => <div key={w.key} className="text-xs font-medium text-rose-700">{w.title}</div>)}
+      <div className="pt-1 text-xs text-slate-500">
+        {[r.maintenanceOpen ? `${countOf(r.maintenanceOpen, "maintenance request")} open` : null, r.unvalidated ? `${countOf(r.unvalidated, "expense")} to approve` : null, r.warnings.length - urgent.length ? `${countOf(r.warnings.length - urgent.length, "other point")} to look at` : null].filter(Boolean).join(" · ") || "Nothing else to look at"}
+      </div>
+    </>
+  );
+}
+
+const FIGURES = { RESTAURANT: RestaurantFigures, EVENT_VENUE: VenueFigures, ROOM_RENTAL: RoomsFigures, MATERIAL_RENTAL: RentalFigures, PROPERTY_RENTAL: PropertyFigures };
 
 /** The figures of a department card on the Boss overview, by department type (lib/domains). */
 export function CardFigures({ card }) {

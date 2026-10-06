@@ -153,6 +153,7 @@ export function Pill({ children, tone = "slate", className }) {
     violet: "bg-violet-100 text-violet-800",
     cyan: "bg-cyan-100 text-cyan-800",
     orange: "bg-orange-100 text-orange-800",
+    indigo: "bg-indigo-100 text-indigo-800",
     pink: "bg-pink-100 text-pink-800",
   };
   return <span className={cn("inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium", tones[tone] || tones.slate, className)}>{children}</span>;

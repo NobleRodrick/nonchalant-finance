@@ -8,6 +8,8 @@
 const R = ["RESTAURANT"];
 const V = ["EVENT_VENUE"];
 const S = ["ROOM_RENTAL"];
+const M = ["MATERIAL_RENTAL"];
+const PR = ["PROPERTY_RENTAL"];
 
 export const MONEY_CATEGORIES = {
   RENT_INCOME: [
@@ -22,6 +24,11 @@ export const MONEY_CATEGORIES = {
     { id: "income-catering", domains: R, label: "Catering order", operationCategory: "OTHER_INCOME" },
     { id: "income-refund", domains: R, label: "Supplier refund", operationCategory: "OTHER_INCOME" },
     { id: "stay-extra-services", label: "Extra services (laundry, transport, meals …)", domains: S, operationCategory: "OTHER_INCOME" },
+    { id: "rental-walk-in", label: "Small rental without a booking", domains: M, operationCategory: "OTHER_INCOME" },
+    { id: "rental-item-sold", label: "Old items sold", domains: M, operationCategory: "OTHER_INCOME" },
+    { id: "property-parking", label: "Parking & signage", domains: PR, operationCategory: "OTHER_INCOME" },
+    { id: "property-short-use", label: "Hall or space used by the day", domains: PR, operationCategory: "OTHER_INCOME" },
+    { id: "property-penalties", label: "Penalties received (late payment, breach)", domains: PR, operationCategory: "OTHER_INCOME" },
     { id: "income-other", label: "Other income", operationCategory: "OTHER_INCOME" },
   ],
   DISCOUNT: [
@@ -48,6 +55,15 @@ export const MONEY_CATEGORIES = {
     { id: "stay-security", label: "Security & caretaker", domains: S, operationCategory: "OPEX_SALARIES" },
     { id: "stay-repairs", label: "Repairs (from Maintenance)", domains: S, operationCategory: "OPEX_MAINTENANCE", internal: true },
     { id: "stay-asset-purchase", label: "Furniture & equipment bought (investment)", domains: S, operationCategory: "OPEX_MAINTENANCE", capital: true, internal: true },
+    { id: "rental-fuel", label: "Fuel", domains: M, operationCategory: "OPEX_TRANSPORT" },
+    { id: "rental-decoration-materials", label: "Decoration materials (flowers, ribbons, balloons …)", domains: M, operationCategory: "OPEX_OTHER" },
+    { id: "rental-storage", label: "Storage", domains: M, operationCategory: "OPEX_OTHER" },
+    { id: "rental-packaging", label: "Packaging", domains: M, operationCategory: "OPEX_OTHER" },
+    { id: "rental-communication", label: "Communication (phone, internet)", domains: M, operationCategory: "OPEX_UTILITIES" },
+    { id: "rental-marketing", label: "Marketing & advertising", domains: M, operationCategory: "OPEX_OTHER" },
+    { id: "rental-repairs", label: "Repairs of damaged items (from Stock)", domains: M, operationCategory: "OPEX_MAINTENANCE", internal: true },
+    // Items added to the rental stock or the asset register: an investment, not an expense (recorded from Purchases).
+    { id: "rental-stock", label: "Rental items & equipment bought (investment)", domains: M, operationCategory: "PURCHASE_STOCK", capital: true, internal: true },
     { id: "opex-gas", domains: R, label: "Cooking gas / charcoal", operationCategory: "OPEX_UTILITIES" },
     { id: "opex-electricity", label: "Electricity", operationCategory: "OPEX_UTILITIES" },
     { id: "opex-water", label: "Water", operationCategory: "OPEX_UTILITIES" },
@@ -56,6 +72,14 @@ export const MONEY_CATEGORIES = {
     { id: "opex-cleaning", label: "Cleaning & hygiene", operationCategory: "OPEX_MAINTENANCE" },
     { id: "opex-repairs", label: "Repairs & maintenance", operationCategory: "OPEX_MAINTENANCE" },
     { id: "opex-packaging", domains: R, label: "Packaging & takeaway", operationCategory: "OPEX_OTHER" },
+    { id: "property-plumbing", label: "Plumbing", domains: PR, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "property-security", label: "Security & guards", domains: PR, operationCategory: "OPEX_SALARIES" },
+    { id: "property-painting", label: "Painting", domains: PR, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "property-construction", label: "Construction & renovation", domains: PR, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "property-waste", label: "Waste collection", domains: PR, operationCategory: "OPEX_OTHER" },
+    { id: "property-admin", label: "Administrative expenses", domains: PR, operationCategory: "OPEX_OTHER" },
+    { id: "property-utilities-paid", label: "Utility bills paid by the company (ENEO, CAMWATER …)", domains: PR, operationCategory: "OPEX_UTILITIES" },
+    { id: "property-maintenance", label: "Maintenance (from Maintenance)", domains: PR, operationCategory: "OPEX_MAINTENANCE", internal: true },
     { id: "opex-other", label: "Other operating expense", operationCategory: "OPEX_OTHER" },
   ],
   OTHER_EXPENSE: [
@@ -96,5 +120,11 @@ export function categoryLabel(id) {
   if (id === "venue-refund") return "Booking refund";
   if (id === "stay-payment") return "Stay payment";
   if (id === "stay-refund") return "Stay refund";
+  if (id === "rental-payment") return "Booking payment";
+  if (id === "rental-refund") return "Booking refund";
+  if (id === "lease-payment") return "Tenant payment";
+  if (id === "lease-refund") return "Refund to tenant";
+  if (id === "lease-deposit") return "Deposit received";
+  if (id === "lease-deposit-refund") return "Deposit refunded";
   return id.replace(/^[a-z]+-/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

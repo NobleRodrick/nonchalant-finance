@@ -137,3 +137,52 @@ export async function setupStayOrganization(label = "Stay") {
   const user = (p) => org.users.find((u) => u.email.startsWith(`${p}-${tag}`));
   return { org, boss, stay: org.departments.find((d) => d.name === "Executive Stay"), head: user("shead"), head2: user("shead2") };
 }
+
+/** A business with Deco Diva (event rental department), its manager and a second head. */
+export async function setupRentalOrganization(label = "Rental") {
+  const tag = uid();
+  cookieJar.clear();
+  ok(await registerBoss({ name: `Boss ${tag}`, email: `dboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(
+    await createOrganization({
+      name: `${label} ${tag}`,
+      departments: [{ name: "Deco Diva", domain: "MATERIAL_RENTAL" }],
+      initialEmployees: [
+        { name: "Diva manager", title: "Manager", email: `dhead-${tag}@test.local`, tempPassword: "Kola-24680", departmentName: "Deco Diva" },
+        { name: "Diva accountant", title: "Accountant", email: `dhead2-${tag}@test.local`, tempPassword: "Kola-24680", departmentName: "Deco Diva" },
+      ],
+    })
+  );
+  const boss = await db.user.findUnique({ where: { email: `dboss-${tag}@test.local` } });
+  await headsChoseTheirPasswords(boss.organizationId);
+  const org = await db.organization.findUnique({ where: { id: boss.organizationId }, include: { departments: true, users: true } });
+  const user = (p) => org.users.find((u) => u.email.startsWith(`${p}-${tag}`));
+  return { org, boss, deco: org.departments.find((d) => d.name === "Deco Diva"), head: user("dhead"), head2: user("dhead2") };
+}
+
+/**
+ * A business with an office rental department ("Rentals", Place Étoilée & Main Building), its
+ * manager and its accountant (both department heads).
+ */
+export async function setupPropertyOrganization(label = "Rentals") {
+  const tag = uid();
+  cookieJar.clear();
+  ok(await registerBoss({ name: `Boss ${tag}`, email: `pboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(
+    await createOrganization({
+      name: `${label} ${tag}`,
+      departments: [{ name: "Rentals", domain: "PROPERTY_RENTAL" }],
+      initialEmployees: [
+        { name: "Rentals manager", title: "Manager", email: `phead-${tag}@test.local`, tempPassword: "Kola-24680", departmentName: "Rentals" },
+        { name: "Rentals accountant", title: "Accountant", email: `phead2-${tag}@test.local`, tempPassword: "Kola-24680", departmentName: "Rentals" },
+      ],
+    })
+  );
+  const boss = await db.user.findUnique({ where: { email: `pboss-${tag}@test.local` } });
+  await headsChoseTheirPasswords(boss.organizationId);
+  const org = await db.organization.findUnique({ where: { id: boss.organizationId }, include: { departments: true, users: true } });
+  const user = (p) => org.users.find((u) => u.email.startsWith(`${p}-${tag}`));
+  const rentals = org.departments.find((d) => d.name === "Rentals");
+  const buildings = await db.propertyBuilding.findMany({ where: { departmentId: rentals.id }, orderBy: { sortOrder: "asc" } });
+  return { org, boss, rentals, main: buildings[0], etoilee: buildings[1], head: user("phead"), head2: user("phead2") };
+}

@@ -1,0 +1,54 @@
+import { pageDate } from "@/lib/page-guards";
+import { resolvePeriod, periodLabel } from "@/lib/reports/periods";
+import { rentalReport, rentalTrends } from "@/lib/rental/reports";
+import { serialize } from "@/lib/serialize";
+import { exportFileName } from "@/lib/export/table-export";
+import { PageHeader } from "@/components/kit/primitives";
+import { PeriodPicker } from "@/components/kit/period-picker";
+import { PrintButton } from "@/components/kit/print-button";
+import { RentalReport } from "./rental-report";
+import { RentalReportExport } from "./report-export";
+
+/**
+ * Event rental reports for any period (?period=today|week|month|…|custom): income statement,
+ * profit per event, cash flow and cash verification, what customers owe, balance sheet, activity,
+ * damages, item and customer analysis, expenses, assets, and the last 12 months. The automatic
+ * daily, weekly and monthly reports are this report with their period.
+ */
+export async function RentalReportsPage({ page, searchParams: sp }) {
+  const { user, department, domain, perms } = page;
+  const { todayKey, timeZone } = pageDate(user, null);
+  const range = resolvePeriod(sp, todayKey, "month");
+  const [report, trends] = await Promise.all([
+    rentalReport({ departmentId: department.id, organizationId: user.organizationId, fromKey: range.fromKey, toKey: range.toKey, timeZone, todayKey }),
+    rentalTrends({ department, toKey: range.toKey, months: 12, timeZone }),
+  ]);
+  const label = periodLabel(range);
+  const data = serialize(report);
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow={`${domain.label} · ${department.name}`}
+        title="Reports"
+        description={`${label}. Revenue counts each booking on its event date; cash shows money the day it moved.`}
+        actions={
+          <div className="flex gap-2">
+            {perms.export ? <RentalReportExport report={data} trends={trends} fileName={exportFileName(department.name, "report", range.fromKey, range.toKey)} /> : null}
+            <PrintButton />
+          </div>
+        }
+      >
+        <div className="mt-3"><PeriodPicker range={range} /></div>
+      </PageHeader>
+      <RentalReport
+        base={`/d/${department.id}`}
+        departmentId={department.id}
+        report={data}
+        trends={trends}
+        label={label}
+        includesToday={range.fromKey <= todayKey && todayKey <= range.toKey}
+        canCount={perms.handover}
+      />
+    </div>
+  );
+}

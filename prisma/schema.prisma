@@ -94,6 +94,19 @@ model Department {
   roomAssets         RoomAsset[]
   roomAssetMoves     RoomAssetMovement[]
   roomRepairs        RoomRepair[]
+  rentalItems        RentalItem[]
+  rentalMovements    RentalMovement[]
+  rentalOrders       RentalOrder[]
+  rentalChecks       RentalCheck[]
+  rentalIncidents    RentalIncident[]
+  rentalCharges      RentalCharge[]
+  fixedAssets        FixedAsset[]
+  propertyBuildings  PropertyBuilding[]
+  propertyUnits      PropertyUnit[]
+  propertyLeases     PropertyLease[]
+  // Business details printed on documents (quotations, invoices, receipts, contracts): legalName,
+  // address, phone, email, website, taxId, logoId, contractTerms, paymentTerms, footer (lib/business-profile)
+  profile            Json?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -151,6 +164,12 @@ model User {
   expensesValidated Transaction[]         @relation("ExpenseValidatedBy")
   roomAssetMoves    RoomAssetMovement[]   @relation("RoomAssetMovedBy")
   roomRepairsMade   RoomRepair[]          @relation("RoomRepairCreatedBy")
+  rentalOrdersMade  RentalOrder[]         @relation("RentalOrderCreatedBy")
+  propertyLeases    PropertyLease[]       @relation("PropertyLeaseCreatedBy")
+  rentalOrdersRun   RentalOrder[]         @relation("RentalOrderHandledBy")
+  rentalMoves       RentalMovement[]      @relation("RentalMovedBy")
+  rentalChecks      RentalCheck[]         @relation("RentalCheckedBy")
+  rentalIncidents   RentalIncident[]      @relation("RentalIncidentBy")
   cashCounts        VenueCashCount[]      @relation("CashCountedBy")
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
@@ -168,6 +187,9 @@ model UserDepartment {
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   isPrimary    Boolean    @default(false)
   isActive     Boolean    @default(true)
+  // Rights the Boss gives this head in this department, beyond the daily work (lib/permissions
+  // GRANTS): approve expenses, void / archive records, change prices, export.
+  grants       String[]   @default(["APPROVE", "VOID", "PRICES", "EXPORT", "ARCHIVE"])
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -192,6 +214,7 @@ enum DepartmentDomain {
   CAR_WASH
   ROOM_RENTAL
   MATERIAL_RENTAL
+  PROPERTY_RENTAL
   SHOP
   OTHER
 }
@@ -276,8 +299,16 @@ model Transaction {
   receivedByName    String? // who received the money (venue payments), when not the person recording it
   bookingId         String? // venue booking this payment, refund or event expense belongs to
   booking           VenueBooking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  rentalOrderId     String? // event rental: the booking this payment, refund or event expense belongs to
+  rentalOrder       RentalOrder?       @relation(fields: [rentalOrderId], references: [id], onDelete: SetNull)
   stayId            String? // rooms: the stay this payment or refund belongs to
   stay              RoomBooking?       @relation(fields: [stayId], references: [id], onDelete: SetNull)
+  leaseId           String? // property rental: the contract a payment, deposit or refund belongs to
+  lease             PropertyLease?     @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  propertyUnitId    String? // property rental: the office an expense or income belongs to
+  propertyUnit      PropertyUnit?      @relation(fields: [propertyUnitId], references: [id], onDelete: SetNull)
+  buildingId        String? // property rental: the building an expense belongs to
+  building          PropertyBuilding?  @relation(fields: [buildingId], references: [id], onDelete: SetNull)
   roomId            String? // rooms: the apartment an expense or income belongs to (none: shared by the house)
   room              Room?              @relation(fields: [roomId], references: [id], onDelete: SetNull)
   authorizedByName  String? // who authorized the expense (as stated when recording it)
@@ -306,6 +337,8 @@ model Transaction {
   debtPayment       DebtPayment?
   cashHandovers     CashHandover[]
   purchase          Purchase?
+  propertyAllocations PropertyAllocation[]
+  propertyDeposit   PropertyDeposit?
 
   @@unique([organizationId, idempotencyKey])
   @@unique([departmentId, referenceNo])
@@ -318,7 +351,11 @@ model Transaction {
   @@index([date])
   @@index([bookingId])
   @@index([stayId])
+  @@index([rentalOrderId])
   @@index([roomId, date])
+  @@index([leaseId])
+  @@index([propertyUnitId, date])
+  @@index([buildingId, date])
   @@map("transactions")
 }
 
@@ -550,6 +587,8 @@ model PurchaseLine {
   stockItem   DepartmentStockItem? @relation(fields: [stockItemId], references: [id], onDelete: SetNull)
   menuItemId  String?
   menuItem    MenuItem?            @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  rentalItemId String?
+  rentalItem  RentalItem?          @relation(fields: [rentalItemId], references: [id], onDelete: SetNull)
   quantity    Decimal
   unitCost    Decimal
   totalCost   Decimal
@@ -887,6 +926,7 @@ enum PaymentMethod {
   CREDIT
   MOMO
   BANK_TRANSFER
+  OTHER // another method the business accepts (cheque, card …): say which in the reference
 }
 
 enum OperationCategory {
@@ -1041,7 +1081,11 @@ model VenueClient {
   email          String?
   company        String?
   notes          String?
+  address        String?
   bookings       VenueBooking[]
+  rentalOrders   RentalOrder[]
+  propertyLeases PropertyLease[]
+  identification String? // tenants: ID card, passport or company registration (as given)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -1568,4 +1612,737 @@ model RoomRepair {
   @@index([departmentId, status])
   @@index([roomId])
   @@map("room_repairs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event & decoration rental (MATERIAL_RENTAL departments, e.g. Deco Diva):
+// docs/EVENT_RENTAL_PLAN.md
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ItemCondition {
+  NEW
+  GOOD
+  FAIR
+  WORN
+}
+
+/// A stock line of rental items (Chairs, Gold charger plates …). Quantities are never typed:
+/// every change is a movement and the counters below always equal the sum of its movements.
+///   in stock = owned − out − damaged − inRepair − missing
+model RentalItem {
+  id               String           @id @default(uuid())
+  organizationId   String
+  departmentId     String
+  department       Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  code             String // "CHR-001"
+  name             String
+  category         String
+  description      String?
+  unit             String           @default("piece")
+  rentalPrice      Int              @default(0) // per event
+  purchasePrice    Int              @default(0) // last unit cost
+  replacementValue Int              @default(0) // charged for a lost unit (0: the purchase price)
+  purchasedOn      DateTime?        @db.Date
+  supplier         String?
+  condition        ItemCondition    @default(GOOD)
+  location         String?
+  photoId          String? // attachment
+  lowStockLevel    Int              @default(0)
+  owned            Int              @default(0)
+  out              Int              @default(0)
+  damaged          Int              @default(0)
+  inRepair         Int              @default(0)
+  missing          Int              @default(0)
+  isActive         Boolean          @default(true)
+  archivedAt       DateTime?
+  archiveReason    String?
+  movements        RentalMovement[]
+  orderLines       RentalOrderLine[]
+  checkLines       RentalCheckLine[]
+  incidents        RentalIncident[]
+  purchaseLines    PurchaseLine[]
+  assets           FixedAsset[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([departmentId, code])
+  @@index([departmentId, isActive, category])
+  @@map("rental_items")
+}
+
+enum RentalMovementKind {
+  OPENING // counted when the department started
+  PURCHASED
+  ISSUED // out to an event
+  RETURNED // back in good condition
+  DAMAGED
+  REPAIR_SENT
+  REPAIRED
+  MISSING
+  FOUND
+  WRITTEN_OFF // thrown away, sold, lost for good: leaves the stock
+  ADJUSTED // a counted correction (reason required)
+  TRANSFERRED // moved to another storage place (quantities unchanged)
+}
+
+/// One change of a stock line; the d* columns are the changes of its counters.
+model RentalMovement {
+  id             String             @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  itemId         String
+  item           RentalItem         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  referenceNo    String // "SM-0001"
+  kind           RentalMovementKind
+  quantity       Int
+  dOwned         Int                @default(0)
+  dOut           Int                @default(0)
+  dDamaged       Int                @default(0)
+  dRepair        Int                @default(0)
+  dMissing       Int                @default(0)
+  value          Int                @default(0) // cost of a purchase, a loss, a repair
+  orderId        String?
+  order          RentalOrder?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  purchaseId     String?
+  incidentId     String?
+  fromLocation   String?
+  toLocation     String?
+  note           String?
+  date           DateTime
+  createdById    String
+  createdBy      User               @relation("RentalMovedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt      DateTime           @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([itemId, date])
+  @@index([departmentId, date])
+  @@index([orderId])
+  @@map("rental_movements")
+}
+
+enum RentalOrderStatus {
+  INQUIRY
+  QUOTED // quotation sent
+  CONFIRMED // holds its items from dispatch to return
+  PREPARING
+  DISPATCHED // items out
+  RETURNED // items back (differences settled or flagged)
+  CLOSED // done (money settled or written down)
+  CANCELLED
+}
+
+/// A booking (an event): customer, event, items and services, dispatch → return.
+model RentalOrder {
+  id                  String            @id @default(uuid())
+  organizationId      String
+  departmentId        String
+  department          Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo         String // "B-0001"
+  clientId            String
+  client              VenueClient       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  eventType           String
+  eventDate           DateTime          @db.Date
+  eventLocation       String?
+  dispatchDate        DateTime          @db.Date
+  returnDate          DateTime          @db.Date
+  guests              Int?
+  status              RentalOrderStatus @default(INQUIRY)
+  itemsTotal          Int               @default(0)
+  servicesTotal       Int               @default(0)
+  discount            Int               @default(0)
+  agreedPrice         Int               @default(0) // items + services − discount
+  priceNote           String?
+  depositDue          Int               @default(0)
+  paymentDueDate      DateTime?         @db.Date
+  specialInstructions String?
+  notes               String?
+  staffNames          String[]          @default([])
+  handledById         String?
+  handledBy           User?             @relation("RentalOrderHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  createdById         String
+  createdBy           User              @relation("RentalOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  quotedAt            DateTime?
+  confirmedAt         DateTime?
+  preparingAt         DateTime?
+  dispatchedAt        DateTime?
+  returnedAt          DateTime?
+  closedAt            DateTime?
+  cancelledAt         DateTime?
+  cancelReason        String?
+  lines               RentalOrderLine[]
+  checks              RentalCheck[]
+  incidents           RentalIncident[]
+  charges             RentalCharge[]
+  movements           RentalMovement[]
+  transactions        Transaction[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, eventDate])
+  @@index([departmentId, status, dispatchDate])
+  @@index([departmentId, returnDate])
+  @@index([clientId])
+  @@map("rental_orders")
+}
+
+enum RentalLineKind {
+  ITEM
+  SERVICE // decoration work, transport, labour …
+}
+
+model RentalOrderLine {
+  id        String            @id @default(uuid())
+  orderId   String
+  order     RentalOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kind      RentalLineKind    @default(ITEM)
+  itemId    String?
+  item      RentalItem?       @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  label     String
+  quantity  Int
+  listPrice Int               @default(0) // the item's rental price when booked
+  unitPrice Int
+  total     Int
+  sortOrder Int               @default(0)
+  issued    Int               @default(0)
+  returned  Int               @default(0) // back in good condition
+  damaged   Int               @default(0)
+  broken    Int               @default(0)
+  missing   Int               @default(0)
+  checkLines RentalCheckLine[]
+
+  @@index([orderId])
+  @@index([itemId])
+  @@map("rental_order_lines")
+}
+
+enum RentalCheckKind {
+  DISPATCH
+  RETURN
+}
+
+/// Items handed out for an event, or (one or several) returns.
+model RentalCheck {
+  id             String            @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          RentalOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  referenceNo    String // "DN-0001" (dispatch note) / "GR-0001" (goods returned)
+  kind           RentalCheckKind
+  date           DateTime
+  counterpart    String? // who took the items / who brought them back
+  notes          String?
+  checkedById    String
+  checkedBy      User              @relation("RentalCheckedBy", fields: [checkedById], references: [id], onDelete: Restrict)
+  lines          RentalCheckLine[]
+  createdAt      DateTime          @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([orderId])
+  @@index([departmentId, date])
+  @@map("rental_checks")
+}
+
+model RentalCheckLine {
+  id       String          @id @default(uuid())
+  checkId  String
+  check    RentalCheck     @relation(fields: [checkId], references: [id], onDelete: Cascade)
+  lineId   String
+  line     RentalOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  itemId   String
+  item     RentalItem      @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  quantity Int // issued (dispatch) or back in good condition (return)
+  damaged  Int             @default(0)
+  broken   Int             @default(0)
+  missing  Int             @default(0)
+
+  @@index([checkId])
+  @@map("rental_check_lines")
+}
+
+enum RentalIncidentKind {
+  DAMAGED // can be repaired
+  BROKEN // beyond repair
+  MISSING
+}
+
+enum RentalIncidentStatus {
+  OPEN // flagged, not decided yet
+  CHARGED // charged to the customer
+  LOSS // a loss of the business
+  REPAIR // sent to repair
+  RESOLVED // repaired, or found
+}
+
+/// Damaged, broken or missing items (after an event or in storage) and how they were settled.
+model RentalIncident {
+  id              String               @id @default(uuid())
+  organizationId  String
+  departmentId    String
+  department      Department           @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo     String // "IN-0001"
+  itemId          String
+  item            RentalItem           @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  orderId         String?
+  order           RentalOrder?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  kind            RentalIncidentKind
+  quantity        Int
+  reason          String?
+  responsibleName String?
+  estimatedLoss   Int                  @default(0) // quantity × replacement value
+  repairCost      Int                  @default(0)
+  chargedAmount   Int                  @default(0)
+  status          RentalIncidentStatus @default(OPEN)
+  chargeId        String?              @unique
+  charge          RentalCharge?        @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  repairBy        String?
+  stockAction     String? // what became of the units: REPAIR (sent to repair), WRITE_OFF, FOUND
+  repairedAt      DateTime?
+  note            String?
+  date            DateTime
+  settledAt       DateTime?
+  createdById     String
+  createdBy       User                 @relation("RentalIncidentBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, status])
+  @@index([orderId])
+  @@index([itemId])
+  @@map("rental_incidents")
+}
+
+enum RentalChargeKind {
+  DAMAGE
+  EXTRA_DAYS
+  TRANSPORT
+  LABOUR
+  OTHER
+}
+
+/// An amount added to what a customer owes for a booking.
+model RentalCharge {
+  id             String           @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          RentalOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  referenceNo    String // "CH-0001"
+  kind           RentalChargeKind
+  label          String
+  amount         Int
+  date           DateTime
+  createdById    String
+  voidedAt       DateTime?
+  voidReason     String?
+  incident       RentalIncident?
+  createdAt      DateTime         @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([orderId])
+  @@index([departmentId, date])
+  @@map("rental_charges")
+}
+
+enum DepreciationMethod {
+  STRAIGHT_LINE
+  DECLINING_BALANCE
+}
+
+/// The asset register (any department): long-term items whose cost is spread over their life.
+model FixedAsset {
+  id               String             @id @default(uuid())
+  organizationId   String
+  departmentId     String
+  department       Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  code             String // "AS-0001"
+  name             String
+  category         String
+  rentalItemId     String?
+  rentalItem       RentalItem?        @relation(fields: [rentalItemId], references: [id], onDelete: SetNull)
+  quantity         Int                @default(1)
+  purchaseDate     DateTime           @db.Date
+  cost             Int // total purchase cost
+  supplier         String?
+  usefulLifeMonths Int
+  salvageValue     Int                @default(0)
+  method           DepreciationMethod @default(STRAIGHT_LINE)
+  condition        ItemCondition      @default(GOOD)
+  location         String?
+  responsibleName  String?
+  notes            String?
+  purchaseId       String?
+  disposedOn       DateTime?          @db.Date
+  disposalReason   String?
+  disposalValue    Int                @default(0) // money received when sold
+  createdById      String
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@unique([departmentId, code])
+  @@index([departmentId, disposedOn])
+  @@map("fixed_assets")
+}
+
+
+// ─── Office & property rental (PROPERTY_RENTAL, e.g. Place Étoilée & Main Building) ──────────
+// docs/PROPERTY_RENTAL_PLAN.md. Rent is never stored as a bill: the schedule of a contract is
+// computed (lib/property/rent-schedule.js); payments, deposit uses and waivers are allocated to
+// its months and to the charges below.
+
+/// Set by the managers; "occupied" and "reserved" come from the contracts.
+enum PropertyUnitState {
+  AVAILABLE
+  MAINTENANCE
+  UNAVAILABLE
+  AWAITING_HANDOVER
+}
+
+enum PropertyChargeKind {
+  ELECTRICITY
+  WATER
+  INTERNET
+  CLEANING
+  SECURITY
+  WASTE
+  MAINTENANCE
+  DAMAGE
+  LATE_FEE
+  OTHER
+}
+
+/// How an office's utility or charge is billed: meter readings × rate, a fixed amount a month,
+/// a share (%) of the building's bill, or included in the rent (not billed).
+enum PropertyBillingMethod {
+  METER
+  FIXED
+  SHARE
+  INCLUDED
+}
+
+enum PropertyLeaseStatus {
+  RESERVED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum PropertyDepositKind {
+  RECEIVED
+  REFUNDED
+  APPLIED_RENT
+  APPLIED_CHARGES
+  APPLIED_DAMAGE
+}
+
+enum PropertyMaintenanceStatus {
+  REPORTED
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PropertyInspectionKind {
+  MOVE_IN
+  MOVE_OUT
+  DAMAGE
+  MAINTENANCE
+  ROUTINE
+}
+
+model PropertyBuilding {
+  id             String         @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name           String
+  address        String?
+  notes          String?
+  sortOrder      Int            @default(0)
+  isActive       Boolean        @default(true)
+  units          PropertyUnit[]
+  transactions   Transaction[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([departmentId, name])
+  @@map("property_buildings")
+}
+
+model PropertyUnit {
+  id              String                @id @default(uuid())
+  organizationId  String
+  departmentId    String
+  department      Department            @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  buildingId      String
+  building        PropertyBuilding      @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  name            String // "A12", "Office 01"
+  floor           String?
+  category        String? // single office, open space, shop, suite …
+  size            Float? // m²
+  listRent        Int                   @default(0) // current monthly rent offered (history in property_rates)
+  depositRequired Int                   @default(0)
+  condition       String? // GOOD | FAIR | NEEDS_REPAIR
+  state           PropertyUnitState     @default(AVAILABLE)
+  stateNote       String?
+  availableFrom   DateTime?             @db.Date
+  description     String?
+  notes           String?
+  isActive        Boolean               @default(true)
+  archivedAt      DateTime?
+  chargeSettings  PropertyUnitCharge[]
+  rates           PropertyRate[]
+  leases          PropertyLease[]
+  charges         PropertyCharge[]
+  maintenance     PropertyMaintenance[]
+  inspections     PropertyInspection[]
+  transactions    Transaction[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([buildingId, name])
+  @@index([departmentId, isActive])
+  @@map("property_units")
+}
+
+model PropertyUnitCharge {
+  id          String                @id @default(uuid())
+  unitId      String
+  unit        PropertyUnit          @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  kind        PropertyChargeKind
+  label       String? // for OTHER (e.g. "Parking")
+  method      PropertyBillingMethod
+  rate        Float                 @default(0) // per unit (meter), FCFA a month (fixed), % (share)
+  meterNumber String?
+  lastReading Float? // last meter reading billed
+  note        String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([unitId])
+  @@map("property_unit_charges")
+}
+
+/// Price history: the list rent of an office, or the rent of a contract, from a month on.
+model PropertyRate {
+  id           String         @id @default(uuid())
+  departmentId String
+  unitId       String?
+  unit         PropertyUnit?  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  leaseId      String?
+  lease        PropertyLease? @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  amount       Int
+  fromMonth    String // "2027-01"
+  note         String?
+  createdById  String
+  createdAt    DateTime       @default(now())
+
+  @@index([unitId, fromMonth])
+  @@index([leaseId, fromMonth])
+  @@map("property_rates")
+}
+
+model PropertyLease {
+  id              String                @id @default(uuid())
+  organizationId  String
+  departmentId    String
+  department      Department            @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo     String // "LC-0001"
+  unitId          String
+  unit            PropertyUnit          @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  clientId        String
+  client          VenueClient           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  status          PropertyLeaseStatus   @default(RESERVED)
+  startDate       DateTime              @db.Date // rent runs from this day
+  endDate         DateTime?             @db.Date // contract expiry (none: open-ended)
+  moveInDate      DateTime?             @db.Date
+  moveOutDate     DateTime?             @db.Date // last day billed
+  rent            Int // monthly rent at the start (changes in property_rates)
+  dueDay          Int                   @default(5)
+  monthsPerBill   Int                   @default(1) // 1, 3, 6 or 12
+  depositRequired Int                   @default(0)
+  noticeDays      Int                   @default(30)
+  utilities       String? // who pays what, as agreed
+  conditions      String?
+  notes           String?
+  createdById     String
+  createdBy       User                  @relation("PropertyLeaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  endReason       String?
+  cancelledAt     DateTime?
+  cancelReason    String?
+  settlement      Json? // move-out summary (balances, deposit decision, inspection)
+  rates           PropertyRate[]
+  charges         PropertyCharge[]
+  allocations     PropertyAllocation[]
+  deposits        PropertyDeposit[]
+  maintenance     PropertyMaintenance[]
+  inspections     PropertyInspection[]
+  transactions    Transaction[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([unitId, status])
+  @@index([clientId])
+  @@index([departmentId, status])
+  @@map("property_leases")
+}
+
+/// Everything billed to a tenant other than rent: utilities (with meter readings), cleaning,
+/// damages, late fees … Voided with a reason, never deleted.
+model PropertyCharge {
+  id              String               @id @default(uuid())
+  organizationId  String
+  departmentId    String
+  referenceNo     String // "UB-0001"
+  leaseId         String
+  lease           PropertyLease        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  unitId          String
+  unit            PropertyUnit         @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  kind            PropertyChargeKind
+  label           String
+  monthKey        String // the month it belongs to, "2026-11"
+  date            DateTime // billed on
+  dueDate         DateTime             @db.Date
+  amount          Int
+  previousReading Float?
+  currentReading  Float?
+  units           Float?
+  rate            Float?
+  note            String?
+  maintenanceId   String?
+  inspectionId    String?
+  createdById     String
+  voidedAt        DateTime?
+  voidedById      String?
+  voidReason      String?
+  allocations     PropertyAllocation[]
+  createdAt       DateTime             @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([leaseId, monthKey])
+  @@index([departmentId, date])
+  @@map("property_charges")
+}
+
+/// What paid what: a payment, a deposit use or a waiver, for a month's rent or a charge.
+model PropertyAllocation {
+  id            String           @id @default(uuid())
+  departmentId  String
+  leaseId       String
+  lease         PropertyLease    @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  monthKey      String? // rent of that month
+  chargeId      String?
+  charge        PropertyCharge?  @relation(fields: [chargeId], references: [id], onDelete: Restrict)
+  amount        Int
+  source        String // PAYMENT | DEPOSIT | WAIVER
+  transactionId String?
+  transaction   Transaction?     @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  depositId     String?
+  deposit       PropertyDeposit? @relation(fields: [depositId], references: [id], onDelete: Restrict)
+  note          String?
+  date          DateTime
+  createdById   String
+  voidedAt      DateTime?
+  createdAt     DateTime         @default(now())
+
+  @@index([leaseId])
+  @@index([transactionId])
+  @@index([chargeId])
+  @@map("property_allocations")
+}
+
+/// The deposit (caution) ledger of a contract: money held for the tenant, never income.
+model PropertyDeposit {
+  id             String               @id @default(uuid())
+  organizationId String
+  departmentId   String
+  leaseId        String
+  lease          PropertyLease        @relation(fields: [leaseId], references: [id], onDelete: Restrict)
+  kind           PropertyDepositKind
+  amount         Int
+  date           DateTime
+  transactionId  String?              @unique
+  transaction    Transaction?         @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  note           String?
+  createdById    String
+  voidedAt       DateTime?
+  allocations    PropertyAllocation[]
+  createdAt      DateTime             @default(now())
+
+  @@index([leaseId])
+  @@index([departmentId, date])
+  @@map("property_deposits")
+}
+
+model PropertyMaintenance {
+  id             String                    @id @default(uuid())
+  organizationId String
+  departmentId   String
+  referenceNo    String // "MR-0001"
+  unitId         String
+  unit           PropertyUnit              @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  leaseId        String?
+  lease          PropertyLease?            @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  title          String // the problem
+  description    String?
+  priority       String                    @default("NORMAL") // LOW | NORMAL | URGENT
+  reportedAt     DateTime
+  reportedBy     String?
+  assignedTo     String?
+  scheduledFor   DateTime? // appointment
+  status         PropertyMaintenanceStatus @default(REPORTED)
+  cost           Int                       @default(0)
+  technician     String?
+  approvedById   String?
+  approvedAt     DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  cancelReason   String?
+  transactionId  String? // the expense that paid it
+  notes          String?
+  createdById    String
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([unitId])
+  @@index([departmentId, status])
+  @@map("property_maintenance")
+}
+
+model PropertyInspection {
+  id             String                 @id @default(uuid())
+  organizationId String
+  departmentId   String
+  referenceNo    String // "IS-0001"
+  unitId         String
+  unit           PropertyUnit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  leaseId        String?
+  lease          PropertyLease?         @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  maintenanceId  String?
+  kind           PropertyInspectionKind
+  scheduledFor   DateTime?              @db.Date
+  doneAt         DateTime?
+  inspector      String?
+  condition      String? // GOOD | FAIR | NEEDS_REPAIR
+  rows           Json? // list of area, condition, note
+  damageCost     Int                    @default(0)
+  notes          String?
+  createdById    String
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([unitId])
+  @@index([departmentId, scheduledFor])
+  @@map("property_inspections")
 }

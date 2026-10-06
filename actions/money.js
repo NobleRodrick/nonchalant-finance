@@ -17,3 +17,8 @@ export async function recordPurchase(input) {
 export async function voidRecord(input) {
   return runAction("voidRecord", () => operation("record.void", input));
 }
+
+/** The Boss, or a head with the right to approve (not the one who recorded it), approves an expense. */
+export async function approveExpense(input) {
+  return runAction("approveExpense", () => operation("expense.validate", input));
+}

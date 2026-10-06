@@ -112,6 +112,20 @@ Then deploy the application code.
    without it. A locked person waits, or the Boss resets the password (which also unlocks).
 4. `JWT_SECRET` must stay at least 32 random characters (the app refuses to start in production otherwise).
 
+## Event rental release (`20261025090000_event_rental`)
+
+1. `npx prisma migrate deploy` (additive: new rental tables, `departments.profile`, `user_departments.grants`,
+   `transactions.rental_order_id`, `PaymentMethod` value `OTHER`). Existing data is untouched.
+2. Push, then resync Inngest (four new rental functions: alerts 07:00, daily 07:25, weekly Monday 07:30, monthly
+   1st 07:35, Africa/Douala).
+
+## Property rental release (`20261101090000_property_rental`)
+
+1. `npx prisma migrate deploy` (additive: property tables, `venue_clients.identification`, `transactions.lease_id /
+   property_unit_id / building_id`, enum value `PROPERTY_RENTAL`). Existing data is untouched.
+2. Push, then resync Inngest (four new property functions: alerts 06:50, daily 07:10, weekly Monday 07:40, monthly
+   1st 07:45, Africa/Douala). Tenant reminders by e-mail need `RESEND_API_KEY` and `EMAIL_FROM`.
+
 ## Rollback
 
 Migrations 1 and 3 change the schema (3 drops `Budget` and the recurring columns); 2 and 4 change data. To roll back, restore the

@@ -64,7 +64,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
     const rows = [["Springer Finance", organizationName], ["Period", range.label], ["Departments", scopeLabel], []];
     if (tab === "income") {
       rows.push(["Line", "Amount (FCFA)", "Previous period", "Change %"]);
-      [["Sales", "salesGross"], ["Rent income", "rentIncome"], ["Events (venue)", "eventsRevenue"], ["Nights stayed (guest house)", "staysRevenue"], ["Kept from cancelled bookings", "cancellationIncome"], ["Other income", "otherIncome"], ["Total money in", "moneyIn"], ["Discounts", "discounts"], ["Purchases", "purchases"], ["Expenses", "expenses"], ["Other expenses", "otherExpenses"], ["Assets lost", "assetLosses"], ["Total money out", "moneyOut"], ["Result", "result"]].forEach(([l, k]) =>
+      [["Sales", "salesGross"], ["Rent income", "rentIncome"], ["Events (venues, rentals)", "eventsRevenue"], ["Nights stayed (guest house)", "staysRevenue"], ["Office rent and tenant charges", "rentRevenue"], ["Kept from cancelled bookings", "cancellationIncome"], ["Gains on assets sold", "assetGains"], ["Other income", "otherIncome"], ["Total money in", "moneyIn"], ["Discounts", "discounts"], ["Purchases", "purchases"], ["Expenses", "expenses"], ["Other expenses", "otherExpenses"], ["Assets lost", "assetLosses"], ["Depreciation", "depreciation"], ["Total money out", "moneyOut"], ["Result", "result"]].forEach(([l, k]) =>
         rows.push([l, income[k], cmp?.[k] ?? "", income.change?.[k] ?? ""])
       );
     } else if (tab === "stock") {
@@ -149,9 +149,11 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
                   <tr><td colSpan={4} className="pb-1 pl-3 pt-3 text-xs font-bold uppercase tracking-wide text-emerald-700">Money in</td></tr>
                   <Row label="Sales" value={income.salesGross} previous={cmp?.salesGross} change={income.change?.salesGross} indent href={drill("SALE")} />
                   <Row label="Rent income" value={income.rentIncome} previous={cmp?.rentIncome} change={income.change?.rentIncome} indent href={drill("RENT_INCOME")} />
-                  {income.eventsRevenue || cmp?.eventsRevenue ? <Row label="Events (venue, on their date)" value={income.eventsRevenue} previous={cmp?.eventsRevenue} change={income.change?.eventsRevenue} indent /> : null}
+                  {income.eventsRevenue || cmp?.eventsRevenue ? <Row label="Events (venues and rentals, on their date)" value={income.eventsRevenue} previous={cmp?.eventsRevenue} change={income.change?.eventsRevenue} indent /> : null}
                   {income.staysRevenue || cmp?.staysRevenue ? <Row label="Nights stayed (guest house, on their date)" value={income.staysRevenue} previous={cmp?.staysRevenue} change={income.change?.staysRevenue} indent /> : null}
+                  {income.rentRevenue || cmp?.rentRevenue ? <Row label="Office rent and tenant charges (on their month)" value={income.rentRevenue} previous={cmp?.rentRevenue} change={income.change?.rentRevenue} indent /> : null}
                   {income.cancellationIncome || cmp?.cancellationIncome ? <Row label="Kept from cancelled bookings" value={income.cancellationIncome} previous={cmp?.cancellationIncome} change={income.change?.cancellationIncome} indent /> : null}
+                  {income.assetGains || cmp?.assetGains ? <Row label="Gains on assets sold" value={income.assetGains} previous={cmp?.assetGains} change={income.change?.assetGains} indent /> : null}
                   <Row label="Other income" value={income.otherIncome} previous={cmp?.otherIncome} change={income.change?.otherIncome} indent href={drill("OTHER_INCOME")} />
                   <Row label="Total money in" value={income.moneyIn} previous={cmp?.moneyIn} change={income.change?.moneyIn} strong />
                   <tr><td colSpan={4} className="pb-1 pl-3 pt-4 text-xs font-bold uppercase tracking-wide text-rose-700">Money out</td></tr>
@@ -160,6 +162,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
                   <Row label="Expenses" value={income.expenses} previous={cmp?.expenses} change={income.change?.expenses} indent sign="-" href={drill("EXPENSE")} />
                   <Row label="Other expenses" value={income.otherExpenses} previous={cmp?.otherExpenses} change={income.change?.otherExpenses} indent sign="-" href={drill("OTHER_EXPENSE")} />
                   {income.assetLosses || cmp?.assetLosses ? <Row label="Assets lost" value={income.assetLosses} previous={cmp?.assetLosses} change={income.change?.assetLosses} indent sign="-" /> : null}
+                  {income.depreciation || cmp?.depreciation ? <Row label="Depreciation of assets" value={income.depreciation} previous={cmp?.depreciation} change={income.change?.depreciation} indent sign="-" /> : null}
                   <Row label="Total money out" value={income.moneyOut} previous={cmp?.moneyOut} change={income.change?.moneyOut} strong sign="-" />
                   <tr><td colSpan={4} className="h-3" /></tr>
                   <Row label="Result (profit / loss)" value={income.result} previous={cmp?.result} change={income.change?.result} strong />
@@ -174,7 +177,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
             <div className="space-y-6">
               <div>
                 <div className="mb-2 text-sm font-semibold">Where the money went</div>
-                <HBars color="#f43f5e" rows={[{ label: "Discounts", value: income.discounts }, { label: "Purchases", value: income.purchases }, { label: "Expenses", value: income.expenses }, { label: "Other expenses", value: income.otherExpenses }, ...(income.assetLosses ? [{ label: "Assets lost", value: income.assetLosses }] : [])]} />
+                <HBars color="#f43f5e" rows={[{ label: "Discounts", value: income.discounts }, { label: "Purchases", value: income.purchases }, { label: "Expenses", value: income.expenses }, { label: "Other expenses", value: income.otherExpenses }, ...(income.assetLosses ? [{ label: "Assets lost", value: income.assetLosses }] : []), ...(income.depreciation ? [{ label: "Depreciation", value: income.depreciation }] : [])]} />
               </div>
               {income.expensesByCategory.length ? (
                 <div>

@@ -22,7 +22,7 @@ async function toast(page, text) {
 test("the homepage presents a business platform, restaurant being the first type", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run every part of your business from one place");
-  await expect(page.getByText("Available now")).toHaveCount(3); // restaurant, event venue, rooms
+  await expect(page.getByText("Available now")).toHaveCount(5); // restaurant, event venue, rooms, event rental, property rental
   await expect(page.getByText("Coming soon").first()).toBeVisible();
   for (const t of ["You, the Boss", "Your department heads", "Two roles, clearly split", "Register your business", "Add your department heads"]) {
     await expect(page.getByText(t).first()).toBeVisible();
@@ -64,7 +64,7 @@ test("the Boss registers and creates a department of each kind from Departments"
   await d.getByLabel("Department name").fill("Department 2");
   await d.getByRole("radio", { name: /Car wash/ }).click();
   await d.getByRole("button", { name: "Create department" }).click();
-  await expect(page.getByText("Department 2")).toBeVisible();
+  await expect(page.getByText("Department 2 CWS")).toBeVisible();
   const card = page.locator("div.rounded-xl", { hasText: "Department 1" }).filter({ has: page.getByRole("button", { name: "Edit" }) }).first();
   deptId = (await card.getByRole("link", { name: "Open" }).getAttribute("href")).split("/")[2];
   await expect(card).toContainText("No department head yet");
@@ -88,7 +88,7 @@ test("the Boss adds a department head titled Accountant from People (temporary p
   await expect(page.getByRole("row", { name: new RegExp(head.name) })).toContainText("Department head");
   await expect(page.getByText("has no department head")).toHaveCount(0);
   await page.goto("/boss/departments");
-  await expect(page.getByTestId("heads-Department 1")).toContainText(`${head.name} · Accountant`);
+  await expect(page.locator("main").getByTestId("heads-Department 1")).toContainText(`${head.name} · Accountant`);
 });
 
 test("the head signs in, changes the password and runs the department", async ({ page }) => {
@@ -129,7 +129,7 @@ test("the head signs in, changes the password and runs the department", async ({
   await dd.getByLabel("Unit price (FCFA)").fill("2000");
   await dd.getByLabel("Plates available now").fill("5");
   await dd.getByRole("button", { name: "Add dish" }).click();
-  await expect(page.getByTestId("dish-row-Dish 1")).toBeVisible();
+  await expect(page.locator("main").getByTestId("dish-row-Dish 1")).toBeVisible();
   await page.goto(`/d/${deptId}/sell`);
   await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "Add Dish 1" }).click();
@@ -188,13 +188,13 @@ test("the Boss sees the head's work, gets notified, exports a statement, resets 
   // to Department 2 as well, then takes them off again (they keep Department 1).
   await page.goto("/boss/departments");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByTestId("heads-Department 1")).toContainText(head.name);
-  await page.getByLabel("Add a head to Department 2").selectOption({ label: `${head.name} (Accountant)` });
+  await expect(page.locator("main").getByTestId("heads-Department 1")).toContainText(head.name);
+  await page.locator("main").getByLabel("Add a head to Department 2").selectOption({ label: `${head.name} (Accountant)` });
   await toast(page, `${head.name} is now a head of Department 2`);
-  await expect(page.getByTestId("heads-Department 2")).toContainText(head.name);
+  await expect(page.locator("main").getByTestId("heads-Department 2")).toContainText(head.name);
   await page.getByRole("button", { name: `Remove ${head.name} from Department 2` }).click();
   await toast(page, `${head.name} no longer heads Department 2`);
-  await expect(page.getByTestId("no-head-Department 2")).toBeVisible();
+  await expect(page.locator("main").getByTestId("no-head-Department 2")).toBeVisible();
   await login(page, head.email, head.password);
   await page.waitForURL(new RegExp(`/d/${deptId}`));
 });

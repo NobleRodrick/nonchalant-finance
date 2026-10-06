@@ -10,7 +10,8 @@ const SCALARS = new Set(["String", "Int", "BigInt", "Float", "Decimal", "Boolean
 
 /** Models (table, columns with nullability) and enums of prisma/schema.prisma. */
 function readSchema(file = "prisma/schema.prisma") {
-  const text = fs.readFileSync(file, "utf8");
+  // Comments are dropped first: a brace in a comment would end a model block early.
+  const text = fs.readFileSync(file, "utf8").replace(/\/\/.*$/gm, "");
   const enums = new Map();
   for (const m of text.matchAll(/^enum (\w+) \{([^}]*)\}/gm)) {
     enums.set(m[1], m[2].split("\n").map((l) => l.replace(/\/\/.*$/, "").trim().split(/\s+/)[0]).filter(Boolean));

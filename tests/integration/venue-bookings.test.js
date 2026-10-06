@@ -31,7 +31,7 @@ describe.skipIf(!hasDb)("event venue: bookings", () => {
     await loginAs(o.head.id);
     fails(await createBooking({ departmentId: o.venue.id, eventDateKey: d(-1), eventType: "Wedding", client: client("A") }), /has passed/);
     fails(await createBooking({ departmentId: o.venue.id, eventDateKey: d(10), client: client("A") }), /type of event/);
-    fails(await createBooking({ departmentId: o.venue.id, eventDateKey: d(10), eventType: "Wedding", client: { name: "" } }), /client's name/);
+    fails(await createBooking({ departmentId: o.venue.id, eventDateKey: d(10), eventType: "Wedding", client: { name: "" } }), /customer's name/);
   });
 
   it("books a date with the date's price, a client, a hold date; reference B-0001", async () => {

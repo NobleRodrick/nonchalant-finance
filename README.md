@@ -3,8 +3,8 @@
 A platform to run a business with several departments (FCFA, Cameroon): the owner registers the business,
 creates its departments and assigns their heads and staff.
 Each department has a **type** chosen when it is created: restaurant, bar, pressing, car wash,
-room rental, material rental, shop or other. **Restaurant, event venue / banquet hall and rooms / guest house are
-fully built**; the other types can be created and staffed and show a "coming soon" workspace until their modules
+room rental, material rental, office & property rental, shop or other. **Restaurant, event venue / banquet hall, rooms / guest house, event &
+decoration rental and office & property rental are fully built**; the other types can be created and staffed and show a "coming soon" workspace until their modules
 are added. Each type declares its pages in `lib/domains/<type>.js`; the sidebar lists every department and expands
 it into its pages, for the Boss and for a head of several departments.
 

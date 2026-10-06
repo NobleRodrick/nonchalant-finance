@@ -211,7 +211,11 @@ Results on a 2-core test machine, database on the same machine:
 | 540 people, an action every 20–40 s each, 2 server processes | 5 290 in 280 s | 0 | 30–110 ms | 300 ms |
 | 540 people, an action every 5–15 s each (heavy), 1 process | 9 202 in 260 s | 0 | 7 s (queueing) | 12 s |
 | 720 people (60 guest houses added: Boss + 2 heads, 5 apartments each), an action every 20–40 s, 2 processes | 7 030 in 278 s | 0 | 30–150 ms | 370 ms |
+| 270 people (60 event rentals, 10 guest houses, 20 venue + restaurant businesses), an action every 20–40 s, 2 processes | 2 477 in 249 s | 0 | 30–170 ms (rental reports 169 ms) | 490 ms |
+| the same 270 people, an action every 3–12 s (heavy), 1 process | 3 693 in 167 s | 0 | 5–9 s (queueing) | 12 s |
 
+- **Event rental under load** (`node scripts/load-check-rental.mjs`): 191 bookings made, 9 refused for lack of
+  items, no item held beyond its usable units on any day, no booking paid beyond its price.
 - **Correct under load**: after every run, no apartment had two stays sharing a night, no stay was paid more than
   its price, no date had two bookings (9 bookings on taken dates were refused), every
   dish's plates matched its stock movements, every sale had its movements, and every payment was recorded once.

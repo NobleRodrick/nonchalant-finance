@@ -1,11 +1,11 @@
-# Session handoff (2 Oct 2026)
+# Session handoff (6 Oct 2026)
 
 Where the Springer Finance work stands, so the next session can continue directly.
 
 ## The product (owner's rules)
 
 - A platform where the **Boss registers a business**, creates **departments** (type chosen at creation: restaurant, bar,
-  pressing, car wash, room rental, material rental, shop, other) and adds **department heads**. Built: **RESTAURANT**,
+  pressing, car wash, room rental, material rental, office & property rental, shop, other) and adds **department heads**. Built: **RESTAURANT**,
   **EVENT_VENUE** (Salle Majestueuse: calendar, bookings, prices, packages, payments & receipts, assets, leads, cash
   count, dashboard, reports — `docs/VENUE_RENTAL_PLAN.md`) and **ROOM_RENTAL** (Executive Stay, 5 apartments:
   apartment profiles and states, bookings with flexible prices, check-in/out, payments and receipts, expenses by
@@ -55,6 +55,43 @@ Where the Springer Finance work stands, so the next session can continue directl
   design), lint and build clean. `sf_rehearsal` DB = copy of production data (JSON backup `_db-backup-2026-09-27`).
   Now: 116 unit/integration tests, 28 e2e (+2 skipped), 3 offline e2e (`npm run test:offline`: production build,
   server stopped for real).
+
+## Property rental release (Place Étoilée & Main Building) — to deploy
+
+- New department type **PROPERTY_RENTAL** ("Office & property rental"): offices in two buildings (board + combined
+  view), tenants, contracts with due day and proration, rent computed (never stored), utilities by meter and monthly
+  bills, payments allocated oldest first (editable, advances), deposits kept apart, arrears with WhatsApp / e-mail
+  reminders, tenant statements, move-out with deposit settlement, maintenance and inspections, expenses by building
+  and office, reports by building / office / tenant / month, calendar, search ("owing more than 100000"), dashboard
+  alerts, Boss card, PDF / Excel / CSV export. As built: `docs/PROPERTY_RENTAL_PLAN.md` (last section).
+- **New migration (additive):** `20261101090000_property_rental` — `npx prisma migrate deploy` from the owner's PC
+  (also applies the event rental and auth migrations if not applied), then push.
+- Inngest: resync (new functions `property-morning-alerts`, `property-daily-reports`, `property-weekly-reports`,
+  `property-monthly-reports`).
+- Tests: 319 unit/integration; e2e property 5/5, event rental 6/6, boss-manages 6/6 (production build).
+- The "duplicate element" seen against production builds is React's hidden copy of a streamed section
+  (`<div hidden id="S:…">` outside `<main>`): invisible to users. Specs now look inside `<main>` for test ids and
+  labels; older specs not yet updated may still trip on it.
+
+## Event rental release (Deco Diva) — to deploy
+
+- New department type **MATERIAL_RENTAL** ("Event & decoration rental"): stock with a movement ledger, bookings with
+  automatic totals and double-booking control (items held from dispatch to return), calendar, dispatch and returns
+  with differences, damages (charge / loss / repair / found), payments (cash, MoMo, bank, other) and refunds,
+  documents (quotation, confirmation, invoice, contract, receipt), expenses with approval, purchases into stock,
+  asset register with straight-line or declining depreciation, profit per event, reports and statements, analysis,
+  Excel/CSV/PDF export, search, dashboard with warnings, morning alerts and daily/weekly/monthly reports, Boss card.
+  As built: `docs/EVENT_RENTAL_PLAN.md` (last section).
+- Per-person rights (all on by default; the Boss switches them off per person and department): approve expenses,
+  void records, change prices, export, archive. Nothing financial is deleted.
+- **New migration (additive):** `20261025090000_event_rental` — run `npx prisma migrate deploy` from the owner's PC
+  (it also applies `20261020090000_auth_hardening` if not applied yet), then push.
+- Inngest: resync (new functions `rental-morning-alerts`, `rental-daily-reports`, `rental-weekly-reports`,
+  `rental-monthly-reports`). Guest-house reports now go through the shared `lib/reports/periodic.js` (same behavior).
+- Delivered to the owner's folder 6 Oct 2026 (144 files, md5-verified; `lib/rooms/expense-validation.js` moved to
+  `lib/departments/`). Tests: 283 unit/integration, event-rental e2e 6/6, venue 10/10, load test 270 people 0 errors.
+- The register limit (5/hour per address) stops a full e2e run on one long-lived server — run spec groups on fresh
+  servers.
 
 ## Executive Stay release (2 Oct 2026) — to deploy with the venue release
 

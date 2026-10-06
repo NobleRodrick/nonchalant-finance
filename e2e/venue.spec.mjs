@@ -73,9 +73,12 @@ test("the head sets up the hall and its prices", async ({ page }) => {
   await page.goto(`/d/${deptId}`);
   await expect(page.getByText("Start by setting up the hall")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Set up the hall" }).click();
+  await page.waitForURL(/\/hall/, { timeout: 60_000 });
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Name of the hall").fill("Salle Majestueuse");
   await page.getByLabel("Capacity (guests)").fill("500");
   await page.getByLabel("Base price of a date (FCFA)").fill("300000");
+  await expect(page.getByRole("button", { name: "Set up the hall" })).toBeEnabled();
   await page.getByRole("button", { name: "Set up the hall" }).click();
   await toast(page, "Hall set up");
   await page.getByRole("button", { name: "Add a price" }).click();

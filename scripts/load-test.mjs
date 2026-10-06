@@ -32,7 +32,7 @@ const THINK_MAX = Number(process.env.THINK_MAX || 12000);
 const TIMEOUT = 30_000;
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || "");
 if (!process.env.JWT_SECRET) throw new Error("Set JWT_SECRET (the server's).");
-const { orgs, stays = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED || "load-seed.json", "utf8"));
+const { orgs, stays = [], rentals = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED || "load-seed.json", "utf8"));
 
 const stats = new Map(); // label → { ms: [], errors, rejected }
 const stat = (label) => stats.get(label) || stats.set(label, { ms: [], errors: 0, rejected: 0 }).get(label);
@@ -47,7 +47,7 @@ const pick = (weighted) => {
 const dateKey = (days) => new Date(Date.now() + 3600000 + days * 86400000).toISOString().slice(0, 10);
 
 async function cookieFor(userId, role, organizationId) {
-  const token = await new SignJWT({ userId, role, organizationId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("3h").sign(secret);
+  const token = await new SignJWT({ userId, role, organizationId, sv: 0, typ: "access" }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("3h").sign(secret);
   return `sf_access_token=${token}`;
 }
 
@@ -173,6 +173,49 @@ const ROLES = {
       [1, () => page(cookie, "stay reports (boss)", `/d/${o.stayId}/reports?period=month`)],
     ])();
   },
+  async rentalHead(o, cookie, state) {
+    const d = `/d/${o.rentalId}`;
+    await pick([
+      [3, () => page(cookie, "rental dashboard", d)],
+      [2, () => page(cookie, "rental bookings", `${d}/bookings`)],
+      [1, () => page(cookie, "rental calendar", `${d}/calendar`)],
+      [1, () => page(cookie, "rental stock", `${d}/stock`)],
+      [1, () => page(cookie, "rental search", `${d}/search?q=Client`)],
+      [
+        2,
+        async () => {
+          // Events from a small window, large quantities: some must be refused (not enough items).
+          const r = await op(cookie, "book items", "rental.order.create", { departmentId: o.rentalId, client: { name: `Client ${randomUUID().slice(0, 6)}`, phone: "690000000" }, eventType: "Wedding", eventDateKey: dateKey(2 + Math.floor(Math.random() * 30)), status: "CONFIRMED", lines: [{ itemId: o.itemIds[0], quantity: 50 + Math.floor(Math.random() * 150) }, { itemId: o.itemIds[1], quantity: 5 + Math.floor(Math.random() * 10) }, { kind: "SERVICE", label: "Decoration", unitPrice: 25000 }] });
+          if (r?.orderId) state.bookings.push(r.orderId);
+        },
+      ],
+      [
+        1,
+        async () => {
+          const id = state.bookings[Math.floor(Math.random() * state.bookings.length)];
+          if (!id) return page(cookie, "rental bookings", `${d}/bookings`);
+          return op(cookie, "record a rental payment", "rental.payment.record", { departmentId: o.rentalId, orderId: id, amount: 20000, paymentMethod: "CASH" });
+        },
+      ],
+    ])();
+  },
+  async rentalHead2(o, cookie) {
+    const d = `/d/${o.rentalId}`;
+    await pick([
+      [2, () => page(cookie, "rental reports", `${d}/reports?period=month`)],
+      [1, () => page(cookie, "rental money", `${d}/money?period=month`)],
+      [1, () => page(cookie, "rental damages", `${d}/damages`)],
+      [1, () => page(cookie, "rental customers", `${d}/customers`)],
+      [1, () => op(cookie, "record a rental expense", "money.record", { departmentId: o.rentalId, type: "EXPENSE", amount: 5000, category: "rental-fuel", description: "Fuel", counterparty: "Total" })],
+    ])();
+  },
+  async rentalBoss(o, cookie) {
+    await pick([
+      [3, () => page(cookie, "boss overview", "/boss")],
+      [1, () => page(cookie, "rental dashboard (boss)", `/d/${o.rentalId}`)],
+      [1, () => page(cookie, "rental reports (boss)", `/d/${o.rentalId}/reports?period=month`)],
+    ])();
+  },
   async boss(o, cookie) {
     await pick([
       [3, () => page(cookie, "boss overview", "/boss")],
@@ -200,10 +243,11 @@ async function main() {
   const people = [
     ...orgs.flatMap((o) => [["venueHead", o, o.venueHeadId, "HEAD"], ["restHead", o, o.restHeadId, "HEAD"], ["boss", o, o.bossId, "ADMIN"]]),
     ...stays.flatMap((o) => [["stayHead", o, o.headId, "HEAD"], ["stayHead2", o, o.head2Id, "HEAD"], ["stayBoss", o, o.bossId, "ADMIN"]]),
+    ...rentals.flatMap((o) => [["rentalHead", o, o.headId, "HEAD"], ["rentalHead2", o, o.head2Id, "HEAD"], ["rentalBoss", o, o.bossId, "ADMIN"]]),
   ];
   const t0 = Date.now();
   const end = t0 + RAMP + DURATION;
-  console.log(`${people.length} people in ${orgs.length + stays.length} businesses · ramp ${RAMP / 1000}s · ${DURATION / 1000}s at full load · think ${THINK_MIN}–${THINK_MAX} ms · ${BASES.join(", ")}`);
+  console.log(`${people.length} people in ${orgs.length + stays.length + rentals.length} businesses · ramp ${RAMP / 1000}s · ${DURATION / 1000}s at full load · think ${THINK_MIN}–${THINK_MAX} ms · ${BASES.join(", ")}`);
   const ticker = setInterval(() => {
     const done = [...stats.values()].reduce((s, x) => s + x.ms.length + x.errors, 0);
     console.log(`  ${Math.round((Date.now() - t0) / 1000)}s: ${done} requests`);
@@ -221,7 +265,7 @@ async function main() {
   console.table(rows.map(({ lastError, ...r }) => r));
   for (const r of rows.filter((x) => x.lastError)) console.log(`  last error of "${r.label}": ${r.lastError}`);
   console.log(`${total} requests in ${Math.round(secs)}s (${(total / secs).toFixed(1)}/s), errors ${errors} (${((errors / Math.max(1, total)) * 100).toFixed(2)}%)`);
-  if (process.env.LOAD_REPORT) writeFileSync(process.env.LOAD_REPORT, JSON.stringify({ people: people.length, businesses: orgs.length + stays.length, seconds: Math.round(secs), total, errors, rows }, null, 1));
+  if (process.env.LOAD_REPORT) writeFileSync(process.env.LOAD_REPORT, JSON.stringify({ people: people.length, businesses: orgs.length + stays.length + rentals.length, seconds: Math.round(secs), total, errors, rows }, null, 1));
   process.exit(errors / Math.max(1, total) > 0.01 ? 1 : 0);
 }
 
