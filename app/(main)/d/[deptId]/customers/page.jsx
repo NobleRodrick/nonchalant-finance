@@ -9,6 +9,8 @@ import { DataTable, Money, PageHeader, Section, StatCard } from "@/components/ki
 import { FilterBar } from "@/components/kit/filter-bar";
 import { CustomerButton } from "@/components/rental/customers/customer-dialog";
 import { CustomerExport } from "@/components/rental/customers/customer-export";
+import { ServiceCustomersPage } from "@/components/services/service-customers-page";
+import { SERVICE_DOMAINS } from "@/lib/domains/trade";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Customers" };
@@ -17,7 +19,9 @@ export const metadata = { title: "Customers" };
 export default async function CustomersPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = (await searchParams) || {};
-  const { user, department, domain, perms } = await departmentPage(deptId, { module: "customers" });
+  const page = await departmentPage(deptId, { module: "customers" });
+  if (SERVICE_DOMAINS.includes(page.department.domain)) return <ServiceCustomersPage page={page} searchParams={sp} />;
+  const { user, department, domain, perms } = page;
   const { todayKey } = pageDate(user, null);
   const rows = await customerList({ departmentId: department.id, q: sp.q, todayKey });
   const owing = rows.filter((c) => c.balance > 0);

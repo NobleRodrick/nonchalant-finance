@@ -22,8 +22,9 @@ export async function AppShell({ user, children }) {
       ? Promise.all([
           db.dailyReport.count({ where: { organizationId: user.organizationId, status: { in: ["SUBMITTED", "REVIEWED"] } } }),
           db.cashHandover.count({ where: { organizationId: user.organizationId, status: "RECORDED" } }),
+          db.journalEntry.count({ where: { status: "PENDING", company: { organizationId: user.organizationId } } }),
         ])
-      : [0, 0],
+      : [0, 0, 0],
   ]);
 
   const depts = departments.map((d) => {
@@ -55,16 +56,21 @@ export async function AppShell({ user, children }) {
           { href: "/boss/daily-reports", label: "Daily reports", icon: "FileCheck2", badge: pending[0] },
           { href: "/boss/cash", label: "Cash received", icon: "HandCoins", badge: pending[1] },
           { href: "/statements", label: "Statements", icon: "LineChart" },
+          { href: "/accounting", label: "Accounting", icon: "BookOpen", badge: pending[2] },
           { href: "/boss/settings", label: "Settings", icon: "Settings" },
         ]
-      : [
+      : user.role === "ACCOUNTANT"
+        ? [{ href: "/accounting", label: "Accounting", icon: "BookOpen" }]
+        : [
           depts.length > 1 ? { href: "/my-departments", label: "All my departments", icon: "LayoutGrid" } : null,
           canStatements ? { href: "/statements", label: "Statements", icon: "LineChart" } : null,
         ].filter(Boolean);
 
   // Pages kept on this computer for offline use (lib/offline, public/sw.js).
   const warmUrls =
-    user.role === "ADMIN"
+    user.role === "ACCOUNTANT"
+      ? ["/accounting", "/profile"]
+      : user.role === "ADMIN"
       ? ["/boss", "/boss/daily-reports", "/boss/cash", "/boss/departments", "/boss/people", "/profile"]
       : [
           ...depts.filter((d) => d.enabled).slice(0, 4).flatMap((d) => d.nav.map((n) => n.href)),

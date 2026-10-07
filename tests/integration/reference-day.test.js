@@ -12,6 +12,7 @@ import { buildDailyReport } from "@/lib/reports/daily-report";
 import { buildStatements } from "@/lib/finance/statements";
 import { dayPositions } from "@/lib/restaurant/stock-math";
 import { addDaysToKey, dayBounds, startOfDateKey } from "@/lib/timezone";
+import { checkLedger } from "../support/ledger-check";
 
 /**
  * The reference day of the implementation plan (§10.4), recorded through the real server
@@ -160,5 +161,10 @@ describe.skipIf(!hasDb)("reference day (plan §10.4)", () => {
     expect(st.debts).toMatchObject({ opening: 9000, given: 6000, repaid: 4000, closing: 11000 });
     expect(st.stock.totals).toMatchObject({ value: 27000, sold: 26 });
     expect(st.coverage).toMatchObject({ expected: 1, sent: 1, approved: 0, final: false });
+  });
+
+  it("the ledger (Full accounting) agrees with the statements, month by month", async () => {
+    const r = await checkLedger({ organizationId: o.org.id, boss: o.boss });
+    expect(r.built.posted).toBeGreaterThan(0);
   });
 });

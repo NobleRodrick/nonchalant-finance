@@ -6,6 +6,8 @@ import { formatMoney } from "@/lib/format";
 import { PageHeader, StatCard } from "@/components/kit/primitives";
 import { FilterBar } from "@/components/kit/filter-bar";
 import { StockSheet } from "@/components/rental/stock/stock-sheet";
+import { TradeStockPage } from "@/components/trade/pages/trade-products-page";
+import { TRADE_DOMAINS } from "@/lib/domains/trade";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Stock" };
@@ -21,7 +23,9 @@ const STATUSES = [
 export default async function StockPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = await searchParams;
-  const { user, department, domain, perms } = await departmentPage(deptId, { module: "stock" });
+  const page = await departmentPage(deptId, { module: "stock" });
+  if (TRADE_DOMAINS.includes(page.department.domain)) return <TradeStockPage page={page} searchParams={sp} />;
+  const { user, department, domain, perms } = page;
   const { todayKey } = pageDate(user, null);
   const [items, categories] = await Promise.all([
     stockSheet({ departmentId: department.id, q: sp?.q, category: sp?.category, status: sp?.status || "active" }),

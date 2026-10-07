@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "../..") } },
   test: {
     environment: "node",
-    include: ["tests/load/*.load.mjs"],
+    include: ["tests/load/seed.load.mjs", "tests/load/stay-demo.load.mjs"],
     setupFiles: ["tests/support/setup.js"],
     globalSetup: ["tests/support/global-setup.js"],
     testTimeout: 1_800_000,

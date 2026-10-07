@@ -37,6 +37,7 @@ model Organization {
   auditEvents        AuditEvent[]
   attachments        Attachment[]
   accountingPeriods  AccountingPeriod[]
+  companies          Company[]
   inventorySnapshots InventorySnapshot[]
   debtors            Debtor[]
   notifications      Notification[]
@@ -107,6 +108,21 @@ model Department {
   // Business details printed on documents (quotations, invoices, receipts, contracts): legalName,
   // address, phone, email, website, taxId, logoId, contractTerms, paymentTerms, footer (lib/business-profile)
   profile            Json?
+  // The registered company this department belongs to (set by the database to the business's
+  // default company when not given; docs/ACCOUNTING_PLAN.md).
+  companyId          String?
+  company            Company?              @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  tradeProducts      TradeProduct[]
+  tradeMovements     TradeMovement[]
+  tradeTabs          TradeTab[]
+  tradePurchases     TradePurchase[]
+  tradePackagings    TradePackaging[]
+  serviceItems       ServiceItem[]
+  serviceTickets     ServiceTicket[]
+  serviceWorkers     ServiceWorker[]
+  // Ledger kept up to date from this department's records (lib/accounting/sync.js).
+  ledgerDirtyAt      DateTime?
+  ledgerSyncedAt     DateTime?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
 
@@ -171,6 +187,7 @@ model User {
   rentalChecks      RentalCheck[]         @relation("RentalCheckedBy")
   rentalIncidents   RentalIncident[]      @relation("RentalIncidentBy")
   cashCounts        VenueCashCount[]      @relation("CashCountedBy")
+  companyMemberships CompanyMember[]
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
@@ -204,6 +221,7 @@ model UserDepartment {
 enum UserRole {
   ADMIN // the Boss: oversees the business, manages departments and people
   HEAD // department head of one or more departments
+  ACCOUNTANT // keeps the books of one or more companies (Full accounting); records no sales
 }
 
 enum DepartmentDomain {
@@ -235,6 +253,8 @@ model AccountingPeriod {
   id             String                 @id @default(uuid())
   organizationId String
   organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId      String? // closes this company's departments only (none: the whole business)
+  company        Company?               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name           String
   startDate      DateTime // inclusive, start of business day (UTC instant)
   endDate        DateTime // inclusive, end of business day (UTC instant)
@@ -244,7 +264,7 @@ model AccountingPeriod {
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
-  @@unique([organizationId, startDate])
+  @@unique([organizationId, companyId, startDate])
   @@index([organizationId, startDate, endDate])
   @@map("accounting_periods")
 }
@@ -339,6 +359,21 @@ model Transaction {
   purchase          Purchase?
   propertyAllocations PropertyAllocation[]
   propertyDeposit   PropertyDeposit?
+  // VAT included in `amount` (Full accounting with VAT: typed on expenses, computed on income).
+  taxAmount         Int?
+  supplierId        String? // supplier of an expense, a bill line or a bill payment
+  supplier          Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  tradePurchaseId   String? // shop / bar: the purchase of goods this money out (or deposit paid) belongs to
+  tradePurchase     TradePurchase?     @relation(fields: [tradePurchaseId], references: [id], onDelete: SetNull)
+  serviceTicketId   String? // pressing / car wash: the ticket a payment, refund or compensation belongs to
+  serviceTicket     ServiceTicket?     @relation(fields: [serviceTicketId], references: [id], onDelete: SetNull)
+  serviceWorkerId   String? // car wash: the washer a commission payout goes to
+  serviceWorker     ServiceWorker?     @relation(fields: [serviceWorkerId], references: [id], onDelete: SetNull)
+  tradeLines        TradeSaleLine[]
+  tradeTab          TradeTab?
+  packagingMoves    PackagingMovement[]
+  supplierBillId    String? // the supplier bill a line (expense on credit) or a payment belongs to
+  supplierBill      SupplierBill?      @relation(fields: [supplierBillId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, idempotencyKey])
   @@unique([departmentId, referenceNo])
@@ -356,6 +391,11 @@ model Transaction {
   @@index([leaseId])
   @@index([propertyUnitId, date])
   @@index([buildingId, date])
+  @@index([supplierBillId])
+  @@index([supplierId, date])
+  @@index([tradePurchaseId])
+  @@index([serviceTicketId])
+  @@index([serviceWorkerId, date])
   @@map("transactions")
 }
 
@@ -919,6 +959,7 @@ enum TransactionType {
   CASH_HANDOVER
   BOOKING_PAYMENT // money received from a client for a venue booking (an advance until the event)
   BOOKING_REFUND // money given back to a client of a venue booking
+  SUPPLIER_PAYMENT // a supplier bill paid (the expense was counted on the bill's date)
 }
 
 enum PaymentMethod {
@@ -1085,6 +1126,7 @@ model VenueClient {
   bookings       VenueBooking[]
   rentalOrders   RentalOrder[]
   propertyLeases PropertyLease[]
+  serviceTickets ServiceTicket[]
   identification String? // tenants: ID card, passport or company registration (as given)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -2346,3 +2388,643 @@ model PropertyInspection {
   @@index([departmentId, scheduledFor])
   @@map("property_inspections")
 }
+
+
+// ─── Accounting (companies, SYSCOHADA ledger) ──────────────────────────────────────────────
+// docs/ACCOUNTING_PLAN.md. The ledger is generated from the money records and revenue
+// recognitions by posting rules (lib/accounting); entries are never edited, only reversed.
+
+enum AccountingLevel {
+  SIMPLE // money in / out, cash, debts, profit (Système minimal de trésorerie)
+  FULL // SYSCOHADA double-entry accounting (Système normal)
+}
+
+enum JournalKind {
+  SALES
+  PURCHASES
+  CASH
+  BANK
+  MOBILE_MONEY
+  GENERAL
+  OPENING
+}
+
+enum JournalEntryStatus {
+  DRAFT
+  PENDING // a manual entry waiting for approval
+  POSTED
+  REJECTED
+}
+
+enum SupplierBillStatus {
+  OPEN
+  PARTIAL
+  PAID
+  VOIDED
+}
+
+enum StatementLineStatus {
+  UNMATCHED
+  MATCHED
+  IGNORED
+}
+
+/// A registered company (NIU, RCCM): it owns departments, keeps its own books and files its taxes.
+model Company {
+  id                    String          @id @default(uuid())
+  organizationId        String
+  organization          Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name                  String
+  legalName             String?
+  taxId                 String? // NIU
+  tradeRegister         String? // RCCM
+  address               String?
+  phone                 String?
+  email                 String?
+  isDefault             Boolean         @default(false)
+  accountingLevel       AccountingLevel @default(SIMPLE)
+  fullSince             DateTime?       @db.Date // first day kept in Full accounting (the ledger starts from the first record)
+  fiscalYearStartMonth  Int             @default(1)
+  vatEnabled            Boolean         @default(false)
+  vatSince              DateTime?       @db.Date
+  vatPricesInclude      Boolean         @default(true) // prices and amounts typed include VAT
+  vatRateBp             Int             @default(1925) // standard rate in basis points (19.25 %)
+  vatExempt             String[]        @default([]) // money categories without VAT
+  payablesEnabled       Boolean         @default(false)
+  reconciliationEnabled Boolean         @default(false)
+  approvalThreshold     Int             @default(0) // manual entries by a head above this amount need approval (0: all)
+  accountMap            Json? // overrides of the default account of a money category or posting role
+  departments           Department[]
+  periods               AccountingPeriod[]
+  ledgerAccounts        LedgerAccount[]
+  journals              Journal[]
+  entries               JournalEntry[]
+  members               CompanyMember[]
+  suppliers             Supplier[]
+  supplierBills         SupplierBill[]
+  bankStatements        BankStatement[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("companies")
+}
+
+/// An accountant's access to a company (the Boss sees every company).
+model CompanyMember {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, userId])
+  @@index([userId])
+  @@map("company_members")
+}
+
+/// The chart of accounts of a company (SYSCOHADA revised, seeded; sub-accounts may be added).
+model LedgerAccount {
+  id           String        @id @default(uuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  number       String
+  name         String // official name (French)
+  label        String // English label shown in the app
+  isActive     Boolean       @default(true)
+  isSystem     Boolean       @default(false) // part of the seeded chart
+  reconcilable Boolean       @default(false) // bank, MoMo, cash: matched against statements
+  lines        JournalLine[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([companyId, number])
+  @@map("ledger_accounts")
+}
+
+model Journal {
+  id        String         @id @default(uuid())
+  companyId String
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code      String // VE, AC, CA, BQ, MM, OD, AN
+  name      String
+  kind      JournalKind
+  entries   JournalEntry[]
+  createdAt DateTime       @default(now())
+
+  @@unique([companyId, code])
+  @@map("journals")
+}
+
+/// One balanced entry. Generated entries carry the key of their source (a money record, an event
+/// held, a month of rent …) and a fingerprint of their lines: when the source changes, the entry is
+/// reversed and a new one posted. Posted entries are never updated (database trigger).
+model JournalEntry {
+  id             String             @id @default(uuid())
+  companyId      String
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  journalId      String
+  journal        Journal            @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  number         String? // "VE-2026-00042", given when posted
+  date           DateTime           @db.Date
+  label          String
+  reference      String? // the source document number (S-0142, RC-0003 …)
+  departmentId   String?
+  sourceKey      String? // e.g. "tx:<id>", "venue-event:<bookingId>", "lease-rent:<leaseId>:2026-10"
+  fingerprint    String?
+  status         JournalEntryStatus @default(POSTED)
+  isManual       Boolean            @default(false)
+  late           Boolean            @default(false) // a change to a closed period, posted in the first open day
+  reversalOfId   String?            @unique
+  reversalOf     JournalEntry?      @relation("EntryReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversedBy     JournalEntry?      @relation("EntryReversal")
+  reversedAt     DateTime?
+  total          Int                @default(0)
+  note           String?
+  createdById    String?
+  createdByName  String?
+  approvedById   String?
+  approvedByName String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  postedAt       DateTime?
+  lines          JournalLine[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([companyId, number])
+  @@index([companyId, date])
+  @@index([companyId, sourceKey])
+  @@index([companyId, status])
+  @@index([journalId, date])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id               String         @id @default(uuid())
+  entryId          String
+  entry            JournalEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  companyId        String
+  accountId        String
+  account          LedgerAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  date             DateTime       @db.Date
+  position         Int            @default(0)
+  debit            Int            @default(0)
+  credit           Int            @default(0)
+  label            String?
+  departmentId     String?
+  partnerKey       String? // "debt:<id>", "booking:<id>", "stay:<id>", "order:<id>", "lease:<id>", "supplier:<id>" …
+  partnerName      String?
+  vatBase          Int? // VAT lines: the amount the VAT was computed on
+  reconciliationId String? // lines matched together (a bank statement line, or a partner's invoice and payment)
+  createdAt        DateTime       @default(now())
+
+  @@index([entryId])
+  @@index([companyId, accountId, date])
+  @@index([companyId, partnerKey])
+  @@index([companyId, departmentId, date])
+  @@index([reconciliationId])
+  @@map("journal_lines")
+}
+
+model Supplier {
+  id         String         @id @default(uuid())
+  companyId  String
+  company    Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name       String
+  phone      String?
+  email      String?
+  taxId      String?
+  address    String?
+  isActive   Boolean        @default(true)
+  bills      SupplierBill[]
+  payments   Transaction[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([companyId, name])
+  @@map("suppliers")
+}
+
+/// A supplier's invoice paid later: each line is an expense on credit of a department (counted on the
+/// bill's date), payments are SUPPLIER_PAYMENT money records.
+model SupplierBill {
+  id           String             @id @default(uuid())
+  companyId    String
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  supplierId   String
+  supplier     Supplier           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  departmentId String
+  referenceNo  String // "FF-0001"
+  supplierRef  String? // the supplier's invoice number
+  date         DateTime           @db.Date
+  dueDate      DateTime?          @db.Date
+  total        Int
+  taxAmount    Int                @default(0)
+  paid         Int                @default(0)
+  status       SupplierBillStatus @default(OPEN)
+  note         String?
+  voidReason   String?
+  createdById  String
+  records      Transaction[]
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@unique([companyId, referenceNo])
+  @@index([companyId, status])
+  @@index([supplierId])
+  @@map("supplier_bills")
+}
+
+/// A bank or MoMo statement imported for reconciliation.
+model BankStatement {
+  id             String          @id @default(uuid())
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accountNumber  String // ledger account reconciled (5211 bank, 552 MoMo …)
+  name           String
+  fromDate       DateTime        @db.Date
+  toDate         DateTime        @db.Date
+  openingBalance Int             @default(0)
+  closingBalance Int             @default(0)
+  importedById   String
+  lines          StatementLine[]
+  createdAt      DateTime        @default(now())
+
+  @@index([companyId, accountNumber])
+  @@map("bank_statements")
+}
+
+model StatementLine {
+  id            String              @id @default(uuid())
+  statementId   String
+  statement     BankStatement       @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  date          DateTime            @db.Date
+  label         String
+  reference     String?
+  amount        Int // money in > 0, out < 0
+  status        StatementLineStatus @default(UNMATCHED)
+  journalLineId String?             @unique // the ledger line it matches
+  entryId       String? // the entry created from it (fees, interest …)
+  createdAt     DateTime            @default(now())
+
+  @@index([statementId, status])
+  @@map("statement_lines")
+}
+
+
+// ─── Sales & stock: shop, bar, other (lib/trade) ───────────────────────────────────────────
+// docs/TRADE_AND_SERVICES_PLAN.md. A sale is a SALE money record; its lines and stock moves hang
+// on it. Stock is valued at average cost; every movement carries its value.
+
+enum TradeProductKind {
+  GOODS // kept in stock
+  SERVICE // sold without stock (a service, a fee)
+}
+
+enum TradeMovementKind {
+  OPENING // counted when the product was added (an opening balance, not a purchase)
+  PURCHASE
+  SALE // sold, or served on an open tab
+  RETURN // a sale voided or a line taken off a tab: back in stock
+  COUNT // a physical count corrected the stock (signed)
+  LOSS // broken, expired, stolen, given away
+  PURCHASE_VOID // a purchase recorded by mistake leaves the stock again
+}
+
+enum TradeTabStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum PackagingMoveKind {
+  RECEIVED // full crates in with a purchase: owed back to the supplier, deposit paid (or owed)
+  RETURNED // empties given back to the supplier: deposit refunded (or set against a purchase)
+  CUSTOMER_OUT // a customer takes bottles / crates away: deposit received
+  CUSTOMER_BACK // the customer brings them back: deposit refunded
+  BROKEN // broken or lost: their deposit is a cost
+  COUNT // empties counted (signed correction of what is on hand)
+}
+
+model TradeProduct {
+  id            String           @id @default(uuid())
+  organizationId String
+  departmentId  String
+  department    Department       @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  code          String // "PR-0001"
+  barcode       String?
+  name          String
+  category      String?
+  unit          String           @default("piece")
+  kind          TradeProductKind @default(GOODS)
+  salePrice     Int
+  costPrice     Int              @default(0) // average cost of one unit in stock
+  quantity      Float            @default(0)
+  lowStock      Float            @default(0)
+  packagingId   String? // bar: the returnable crate a bottle comes in
+  packaging     TradePackaging?  @relation(fields: [packagingId], references: [id], onDelete: SetNull)
+  unitsPerPack  Int              @default(1) // bottles in a crate, pieces in a carton
+  supplierName  String?
+  isActive      Boolean          @default(true)
+  createdById   String
+  movements     TradeMovement[]
+  saleLines     TradeSaleLine[]
+  tabLines      TradeTabLine[]
+  purchaseLines TradePurchaseLine[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([departmentId, code])
+  @@unique([departmentId, barcode])
+  @@index([departmentId, name])
+  @@map("trade_products")
+}
+
+model TradeMovement {
+  id            String            @id @default(uuid())
+  departmentId  String
+  department    Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  productId     String
+  product       TradeProduct      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  kind          TradeMovementKind
+  quantity      Float // signed: + in, − out
+  unitCost      Int
+  value         Int // signed value at cost (quantity × unit cost)
+  date          DateTime
+  transactionId String? // the sale
+  tabLineId     String?
+  purchaseId    String?
+  note          String?
+  createdById   String
+  createdAt     DateTime          @default(now())
+
+  @@index([departmentId, date])
+  @@index([productId, date])
+  @@index([transactionId])
+  @@map("trade_movements")
+}
+
+/// One line of a sale (shop, bar, other): what was sold, at what price, at what cost.
+model TradeSaleLine {
+  id            String       @id @default(uuid())
+  transactionId String
+  transaction   Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  departmentId  String
+  productId     String
+  product       TradeProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  name          String
+  quantity      Float
+  unitPrice     Int
+  total         Int
+  discount      Int          @default(0)
+  unitCost      Int          @default(0)
+  createdAt     DateTime     @default(now())
+
+  @@index([transactionId])
+  @@index([departmentId, productId])
+  @@map("trade_sale_lines")
+}
+
+/// A bar tab: drinks served to a table or a customer, paid when it closes (one SALE).
+model TradeTab {
+  id            String         @id @default(uuid())
+  departmentId  String
+  department    Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo   String // "TB-0001"
+  label         String // table, customer
+  status        TradeTabStatus @default(OPEN)
+  openedAt      DateTime       @default(now())
+  openedById    String
+  closedAt      DateTime?
+  cancelReason  String?
+  transactionId String?        @unique
+  transaction   Transaction?   @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  lines         TradeTabLine[]
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, status])
+  @@map("trade_tabs")
+}
+
+model TradeTabLine {
+  id         String       @id @default(uuid())
+  tabId      String
+  tab        TradeTab     @relation(fields: [tabId], references: [id], onDelete: Cascade)
+  productId  String
+  product    TradeProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  name       String
+  quantity   Float
+  unitPrice  Int
+  total      Int
+  addedAt    DateTime     @default(now())
+  addedById  String
+  voidedAt   DateTime?
+  voidReason String?
+
+  @@index([tabId])
+  @@map("trade_tab_lines")
+}
+
+model TradePurchase {
+  id            String              @id @default(uuid())
+  departmentId  String
+  department    Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo   String // "PU-0001"
+  supplierName  String
+  supplierRef   String?
+  date          DateTime
+  goodsTotal    Int
+  depositTotal  Int                 @default(0) // crates' deposits (bar): not a cost
+  paymentMethod PaymentMethod
+  supplierBillId String? // bought on credit: the bill in the company's books
+  status        String              @default("RECORDED") // RECORDED | VOIDED
+  voidReason    String?
+  createdById   String
+  lines         TradePurchaseLine[]
+  records       Transaction[]
+  createdAt     DateTime            @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, date])
+  @@map("trade_purchases")
+}
+
+model TradePurchaseLine {
+  id         String        @id @default(uuid())
+  purchaseId String
+  purchase   TradePurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId  String
+  product    TradeProduct  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity   Float
+  unitCost   Int
+  total      Int
+
+  @@index([purchaseId])
+  @@map("trade_purchase_lines")
+}
+
+/// A returnable container (bar): a crate with its bottles, its deposit (consigne) per crate.
+model TradePackaging {
+  id           String              @id @default(uuid())
+  departmentId String
+  department   Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name         String // "SABC crate (12)"
+  supplierName String?
+  deposit      Int // deposit of one crate with its bottles
+  bottleDeposit Int                @default(0) // deposit of one bottle (customers taking bottles)
+  isActive     Boolean             @default(true)
+  products     TradeProduct[]
+  movements    PackagingMovement[]
+  createdAt    DateTime            @default(now())
+
+  @@unique([departmentId, name])
+  @@map("trade_packagings")
+}
+
+model PackagingMovement {
+  id            String            @id @default(uuid())
+  departmentId  String
+  packagingId   String
+  packaging     TradePackaging    @relation(fields: [packagingId], references: [id], onDelete: Restrict)
+  kind          PackagingMoveKind
+  quantity      Int // crates (always > 0, except COUNT: signed)
+  amount        Int               @default(0) // deposit paid, received or lost
+  partyName     String? // the supplier or the customer
+  transactionId String?
+  transaction   Transaction?      @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  purchaseId    String?
+  date          DateTime
+  note          String?
+  createdById   String
+  voidedAt      DateTime?
+  createdAt     DateTime          @default(now())
+
+  @@index([departmentId, date])
+  @@index([packagingId])
+  @@map("packaging_movements")
+}
+
+// ─── Job tickets: pressing, car wash, other (lib/services) ─────────────────────────────────
+
+enum ServiceTicketStatus {
+  RECEIVED
+  IN_PROGRESS
+  READY
+  COLLECTED
+  CANCELLED
+}
+
+enum CommissionType {
+  NONE
+  PERCENT
+  FIXED
+}
+
+/// A service of the price list, with its price for each variant (garment, vehicle type).
+model ServiceItem {
+  id              String         @id @default(uuid())
+  departmentId    String
+  department      Department     @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name            String
+  category        String?
+  basePrice       Int            @default(0) // when a variant has no price of its own
+  prices          Json? // price of each variant by name: Shirt 500, Suit 3000; Car 2000, 4x4 3000
+  unit            String         @default("item") // item, kg, vehicle
+  commissionType  CommissionType @default(NONE)
+  commissionValue Int            @default(0) // % or FCFA per unit
+  minutes         Int? // usual duration (car wash queue)
+  sortOrder       Int            @default(0)
+  isActive        Boolean        @default(true)
+  lines           ServiceTicketLine[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@unique([departmentId, name])
+  @@map("service_items")
+}
+
+model ServiceWorker {
+  id           String              @id @default(uuid())
+  departmentId String
+  department   Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String?
+  isActive     Boolean             @default(true)
+  lines        ServiceTicketLine[]
+  payouts      Transaction[]
+  createdAt    DateTime            @default(now())
+
+  @@unique([departmentId, name])
+  @@map("service_workers")
+}
+
+model ServiceTicket {
+  id            String              @id @default(uuid())
+  organizationId String
+  departmentId  String
+  department    Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo   String // "TK-0001"
+  clientId      String?
+  client        VenueClient?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  customerName  String?
+  customerPhone String?
+  vehiclePlate  String?
+  vehicleType   String?
+  status        ServiceTicketStatus @default(RECEIVED)
+  express       Boolean             @default(false)
+  surchargePct  Int                 @default(0)
+  discount      Int                 @default(0)
+  discountReason String?
+  subtotal      Int                 @default(0)
+  total         Int                 @default(0)
+  tagNo         String? // pressing: tag numbers on the garments
+  notes         String?
+  receivedAt    DateTime
+  promisedAt    DateTime?
+  startedAt     DateTime?
+  readyAt       DateTime?
+  collectedAt   DateTime?
+  cancelledAt   DateTime?
+  cancelReason  String?
+  notifiedAt    DateTime?
+  createdById   String
+  lines         ServiceTicketLine[]
+  records       Transaction[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, status])
+  @@index([departmentId, receivedAt])
+  @@index([departmentId, collectedAt])
+  @@index([departmentId, vehiclePlate])
+  @@map("service_tickets")
+}
+
+model ServiceTicketLine {
+  id         String         @id @default(uuid())
+  ticketId   String
+  ticket     ServiceTicket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  itemId     String?
+  item       ServiceItem?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  variant    String?
+  label      String
+  quantity   Float
+  unitPrice  Int
+  total      Int
+  workerId   String?
+  worker     ServiceWorker? @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  commission Int            @default(0) // earned by the worker (counted on collection)
+  notes      String? // colour, brand, stains …
+  position   Int            @default(0)
+
+  @@index([ticketId])
+  @@index([workerId])
+  @@map("service_ticket_lines")
+}
+

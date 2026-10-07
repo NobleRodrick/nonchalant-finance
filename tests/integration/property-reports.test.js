@@ -13,6 +13,7 @@ import { arrears, tenantDetail } from "@/lib/property/lease-queries";
 import { sendPropertyAlerts, sendPropertyReports } from "@/lib/property/periodic-reports";
 import { buildStatements } from "@/lib/finance/statements";
 import { bossOverview } from "@/lib/boss/overview";
+import { checkLedger } from "../support/ledger-check";
 
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: async () => {}, createFunction: (c, t, h) => ({ c, t, h }) } }));
 
@@ -105,5 +106,10 @@ describe.skipIf(!hasDb)("property rental: reports, statements, dashboard, search
     expect(rep.body).toMatch(/^Rent collected .* · income .* · owed .* occupied/);
     // A reminder was attempted for the tenant with an e-mail (recorded even without e-mail set up).
     expect(await db.auditEvent.count({ where: { departmentId: o.rentals.id, action: "PROPERTY_REMINDER_SENT", entityId: xyz } })).toBe(1);
+  });
+
+  it("the ledger (Full accounting) agrees with the statements, month by month", async () => {
+    const r = await checkLedger({ organizationId: o.org.id, boss: o.boss });
+    expect(r.built.posted).toBeGreaterThan(0);
   });
 });

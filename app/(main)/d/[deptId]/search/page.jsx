@@ -2,6 +2,8 @@ import Link from "next/link";
 import { departmentPage, pageDate } from "@/lib/page-guards";
 import { rentalSearch } from "@/lib/rental/search";
 import { propertySearch } from "@/lib/property/search";
+import { tradeSearch } from "@/lib/trade/queries";
+import { serviceSearch } from "@/lib/services/queries";
 import { formatMoney } from "@/lib/format";
 import { EmptyState, PageHeader, Section } from "@/components/kit/primitives";
 import { FilterBar } from "@/components/kit/filter-bar";
@@ -25,6 +27,29 @@ const SEARCHES = {
   },
 };
 
+const TRADE_SEARCH = {
+  run: tradeSearch,
+  groups: [["products", "Products"], ["money", "Sales, expenses and other records"], ["purchases", "Purchases"], ["debts", "Customers on credit"], ["tabs", "Tabs"]],
+  placeholder: "e.g. rice, 600123…, PR-0004, Ngono, S-0031, Grossiste…",
+  description: "Products (by name, code or barcode), sales, purchases, suppliers, customers on credit, tabs — by name, phone, reference or description.",
+};
+const SERVICE_SEARCH = {
+  run: serviceSearch,
+  groups: [["tickets", "Tickets"], ["prices", "Price list"], ["money", "Payments and expenses"]],
+  placeholder: "e.g. Ngono, 677…, LT123AB, TK-0012, tag A101",
+  description: "Tickets (customer, phone, plate, tag number, reference), the price list, payments and expenses.",
+};
+async function bothSearch(args) {
+  const [a, b] = await Promise.all([tradeSearch(args), serviceSearch(args)]);
+  if (!a || !b) return null;
+  return { q: a.q, groups: { ...a.groups, tickets: b.groups.tickets, prices: b.groups.prices }, total: a.total + b.groups.tickets.length + b.groups.prices.length };
+}
+SEARCHES.SHOP = TRADE_SEARCH;
+SEARCHES.BAR = TRADE_SEARCH;
+SEARCHES.PRESSING = SERVICE_SEARCH;
+SEARCHES.CAR_WASH = SERVICE_SEARCH;
+SEARCHES.OTHER = { ...TRADE_SEARCH, run: bothSearch, groups: [["products", "Products & services"], ["tickets", "Jobs"], ["money", "Sales, payments and expenses"], ["purchases", "Purchases"], ["debts", "Customers on credit"], ["prices", "Job price list"]] };
+
 /** One search across the department (?q=): bookings, customers, items, money records, documents. */
 export default async function SearchPage({ params, searchParams }) {
   const { deptId } = await params;
@@ -33,7 +58,7 @@ export default async function SearchPage({ params, searchParams }) {
   const { timeZone, todayKey } = pageDate(user, null);
   const S = SEARCHES[department.domain] || SEARCHES.MATERIAL_RENTAL;
   const GROUPS = S.groups;
-  const found = await S.run({ departmentId: department.id, q: sp.q, timeZone, todayKey });
+  const found = await S.run({ departmentId: department.id, department, q: sp.q, timeZone, todayKey });
   const base = `/d/${department.id}`;
   return (
     <div className="space-y-5">

@@ -71,13 +71,13 @@ test("the Boss creates an event venue department with its head", async ({ page }
 test("the head sets up the hall and its prices", async ({ page }) => {
   await login(page, head.email, head.password);
   await page.goto(`/d/${deptId}`);
-  await expect(page.getByText("Start by setting up the hall")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("main").getByText("Start by setting up the hall")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("link", { name: "Set up the hall" }).click();
   await page.waitForURL(/\/hall/, { timeout: 60_000 });
   await page.waitForLoadState("networkidle");
-  await page.getByLabel("Name of the hall").fill("Salle Majestueuse");
-  await page.getByLabel("Capacity (guests)").fill("500");
-  await page.getByLabel("Base price of a date (FCFA)").fill("300000");
+  await page.locator("main").getByLabel("Name of the hall").fill("Salle Majestueuse");
+  await page.locator("main").getByLabel("Capacity (guests)").fill("500");
+  await page.locator("main").getByLabel("Base price of a date (FCFA)").fill("300000");
   await expect(page.getByRole("button", { name: "Set up the hall" })).toBeEnabled();
   await page.getByRole("button", { name: "Set up the hall" }).click();
   await toast(page, "Hall set up");
@@ -88,9 +88,9 @@ test("the head sets up the hall and its prices", async ({ page }) => {
   await d.getByLabel("Price of the date (FCFA)").fill("500000");
   await d.getByRole("button", { name: "Add the price" }).click();
   await toast(page, "Price added");
-  await expect(page.getByTestId("rules-WEEKDAY")).toContainText("Saturdays");
-  await expect(page.getByTestId("rules-WEEKDAY")).toContainText("500 000");
-  await expect(page.getByTestId("price-preview")).toContainText("Saturday price");
+  await expect(page.locator("main").getByTestId("rules-WEEKDAY")).toContainText("Saturdays");
+  await expect(page.locator("main").getByTestId("rules-WEEKDAY")).toContainText("500 000");
+  await expect(page.locator("main").getByTestId("price-preview")).toContainText("Saturday price");
 });
 
 test("the head books a free date from the calendar; the date can no longer be booked", async ({ page }) => {
@@ -98,7 +98,7 @@ test("the head books a free date from the calendar; the date can no longer be bo
   await page.goto(`/d/${deptId}/calendar`);
   const date = dayKey(3);
   if (date.slice(0, 7) !== dayKey(0).slice(0, 7)) await page.goto(`/d/${deptId}/calendar?month=${date.slice(0, 7)}`);
-  const cell = page.getByTestId(`day-${date}`);
+  const cell = page.locator("main").getByTestId(`day-${date}`);
   await expect(cell).toHaveAttribute("data-state", "AVAILABLE");
   await cell.click();
   const d = page.getByRole("dialog");
@@ -127,10 +127,10 @@ test("the booking page: confirm, change the price, move the date, cancel", async
   await page.goto(`/d/${deptId}/bookings`);
   await page.getByRole("link", { name: "B-0001" }).click();
   await expect(page.getByRole("heading", { name: "B-0001 · Wedding" })).toBeVisible({ timeout: 60_000 }); // first visit compiles the page (dev)
-  await expect(page.getByText("the date is held until")).toBeVisible();
+  await expect(page.locator("main").getByText("the date is held until")).toBeVisible();
   await page.getByRole("button", { name: "Confirm" }).click();
   await toast(page, "Booking confirmed");
-  await expect(page.getByTestId("booking-actions").getByRole("button", { name: "Confirm" })).toHaveCount(0);
+  await expect(page.locator("main").getByTestId("booking-actions").getByRole("button", { name: "Confirm" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Change" }).click();
   let d = page.getByRole("dialog");
@@ -139,7 +139,7 @@ test("the booking page: confirm, change the price, move the date, cancel", async
   await d.getByLabel("Why is the price lower?").fill("Negotiated");
   await d.getByRole("button", { name: "Save" }).click();
   await toast(page, "Booking updated");
-  await expect(page.getByText(`${fr(250000)} FCFA`).first()).toBeVisible();
+  await expect(page.locator("main").getByText(`${fr(250000)} FCFA`).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Move date" }).click();
   d = page.getByRole("dialog");
@@ -153,10 +153,10 @@ test("the booking page: confirm, change the price, move the date, cancel", async
   await d.getByLabel("Why is it cancelled?").fill("The family changed plans");
   await d.getByRole("button", { name: "Cancel the booking" }).click();
   await toast(page, "Booking cancelled");
-  await expect(page.getByText("Cancelled: The family changed plans. The date is free.")).toBeVisible();
-  await expect(page.getByText("Moved", { exact: true })).toBeVisible(); // history
+  await expect(page.locator("main").getByText("Cancelled: The family changed plans. The date is free.")).toBeVisible();
+  await expect(page.locator("main").getByText("Moved", { exact: true })).toBeVisible(); // history
   await page.getByRole("link", { name: "See it in the calendar" }).click();
-  await expect(page.getByTestId(`day-${dayKey(10)}`)).toHaveAttribute("data-state", "AVAILABLE");
+  await expect(page.locator("main").getByTestId(`day-${dayKey(10)}`)).toHaveAttribute("data-state", "AVAILABLE");
 });
 
 test("payments with receipts and proof, a charge, the statement; the cash reaches the drawer", async ({ page }) => {
@@ -183,7 +183,7 @@ test("payments with receipts and proof, a charge, the statement; the cash reache
   await p.getByLabel("Remarks").fill("Deposit");
   await p.getByRole("button", { name: /^Record/ }).click();
   await toast(page, "Payment RC-0001 recorded. Balance: 400 000 FCFA");
-  await expect(page.getByText("Deposit / partly paid").first()).toBeVisible();
+  await expect(page.locator("main").getByText("Deposit / partly paid").first()).toBeVisible();
 
   // Mobile Money needs its reference; a proof is attached.
   await page.getByRole("button", { name: "Record a payment" }).click();
@@ -208,7 +208,7 @@ test("payments with receipts and proof, a charge, the statement; the cash reache
 
   // The receipt of the first payment.
   await page.getByRole("link", { name: "RC-0001", exact: true }).click();
-  const r = page.getByTestId("receipt");
+  const r = page.locator("main").getByTestId("receipt");
   await expect(r).toContainText("Société Alpha", { timeout: 60_000 });
   await expect(r).toContainText("Corporate event");
   await expect(r).toContainText("600 000 FCFA"); // total at that time (the charge came later)
@@ -218,17 +218,17 @@ test("payments with receipts and proof, a charge, the statement; the cash reache
   await expect(r).toContainText("Deposit");
   await page.getByRole("link", { name: "← B-0002" }).click();
   await page.getByRole("link", { name: "Statement", exact: true }).click();
-  const s = page.getByTestId("statement-doc");
+  const s = page.locator("main").getByTestId("statement-doc");
   await expect(s).toContainText("Two extra hours", { timeout: 60_000 });
   await expect(s).toContainText("Balance due300 000 FCFA");
 
   // The cash payment is in the drawer: the head can hand it over.
   await page.goto(`/d/${deptId}/cash-handover`);
   await expect(page.getByRole("heading", { name: "Cash to Boss" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("200 000 FCFA").first()).toBeVisible();
+  await expect(page.locator("main").getByText("200 000 FCFA").first()).toBeVisible();
   await page.goto(`/d/${deptId}/money`);
-  await expect(page.getByText("Received from clients", { exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("RC-0002")).toBeVisible();
+  await expect(page.locator("main").getByText("Received from clients", { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("main").getByText("RC-0002")).toBeVisible();
 });
 
 test("a package with a free room at Executive Stay: the room is given and occupied there", async ({ page }) => {
@@ -259,7 +259,7 @@ test("a package with a free room at Executive Stay: the room is given and occupi
   await p.getByLabel("What").fill("Free room at Executive Stay");
   await p.getByRole("button", { name: "Create the package" }).click();
   await toast(page, "Package created");
-  await expect(page.getByTestId("package-Hall + Executive room")).toContainText("Free room at Executive Stay (1 night)");
+  await expect(page.locator("main").getByTestId("package-Hall + Executive room")).toContainText("Free room at Executive Stay (1 night)");
 
   // A booking with the package; its room is given.
   await page.goto(`/d/${deptId}/bookings`);
@@ -274,19 +274,19 @@ test("a package with a free room at Executive Stay: the room is given and occupi
   await b.getByRole("button", { name: "Reserve the date" }).click();
   await toast(page, "Booking B-0003 saved");
   await page.getByRole("link", { name: "B-0003" }).click();
-  await expect(page.getByText("Rooms of the package (0 of 1 given)")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("main").getByText("Rooms of the package (0 of 1 given)")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Give a room" }).click();
   const a = page.getByRole("dialog");
   await a.locator("#al-room").selectOption({ label: "101" });
   await a.getByRole("button", { name: "Give the room" }).click();
   await toast(page, "Room 101 given (RB-0001)");
-  await expect(page.getByText("Rooms of the package (1 of 1 given)")).toBeVisible();
+  await expect(page.locator("main").getByText("Rooms of the package (1 of 1 given)")).toBeVisible();
 
   // Executive Stay shows the room as taken that night, free with the package.
   await page.goto(`/d/${stayId}/occupancy?from=${dayKey(18)}`);
-  await expect(page.getByTestId(`night-101-${dayKey(20)}`)).toHaveAttribute("aria-label", /Famille Eto \(free with a venue package\)/, { timeout: 60_000 });
+  await expect(page.locator("main").getByTestId(`night-101-${dayKey(20)}`)).toHaveAttribute("aria-label", /Famille Eto \(free with a venue package\)/, { timeout: 60_000 });
   await page.goto(`/d/${stayId}/stays`);
-  await expect(page.getByText("Free (venue package)")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("main").getByText("Free (venue package)")).toBeVisible({ timeout: 60_000 });
 });
 
 test("assets checked before and after an event: the difference is charged to the client or recorded as a loss", async ({ page }) => {
@@ -324,8 +324,8 @@ test("assets checked before and after an event: the difference is charged to the
   await s2.getByLabel("What happens").selectOption("LOSS");
   await s2.getByRole("button", { name: "Settle" }).click();
   await toast(page, "Difference settled");
-  await expect(page.getByText("3 × Chairs damaged").first()).toBeVisible();
-  await expect(page.getByText("Charged to the client").first()).toBeVisible();
+  await expect(page.locator("main").getByText("3 × Chairs damaged").first()).toBeVisible();
+  await expect(page.locator("main").getByText("Charged to the client").first()).toBeVisible();
   await page.goto(`/d/${deptId}/assets`);
   await expect(page.getByRole("row", { name: /Chairs/ }).first()).toContainText("98"); // 2 missing left the inventory
 });
@@ -356,16 +356,16 @@ test("leads: recorded, one lost with its reason, one booked; the conversion rate
   await d.getByRole("button", { name: "Reserve the date" }).click();
   await toast(page, "Booking B-0004 saved");
   await expect(page.getByRole("row", { name: /Mme Ekane/ })).toContainText("Booked");
-  await expect(page.getByText("Conversion rate").locator("xpath=../..")).toContainText("50%");
+  await expect(page.locator("main").getByText("Conversion rate").locator("xpath=../..")).toContainText("50%");
 });
 
 test("dashboard, reports with a cash count, and the Boss's card of the venue", async ({ page }) => {
   await login(page, head.email, head.password);
   await page.goto(`/d/${deptId}`);
-  const kpis = page.getByTestId("venue-kpis");
+  const kpis = page.locator("main").getByTestId("venue-kpis");
   await expect(kpis).toContainText("Revenue", { timeout: 60_000 });
   await expect(kpis).toContainText("Still owed by clients");
-  await expect(page.getByTestId("venue-upcoming")).toContainText("Mme Ekane");
+  await expect(page.locator("main").getByTestId("venue-upcoming")).toContainText("Mme Ekane");
   await expect(page.getByRole("heading", { name: "Revenue by month" })).toBeVisible();
 
   await page.goto(`/d/${deptId}/reports`);
@@ -376,7 +376,7 @@ test("dashboard, reports with a cash count, and the Boss's card of the venue", a
   await expect(page.getByRole("row", { name: /Mme Ekane/ })).toBeVisible();
 
   // Count the cash 1 000 short: an explanation is required, then the count is listed.
-  const box = page.getByTestId("cash-count");
+  const box = page.locator("main").getByTestId("cash-count");
   const expected = Number((await box.locator("strong").first().innerText()).replace(/\D/g, ""));
   await box.getByLabel("Cash counted (FCFA)").fill(String(expected - 1000));
   await expect(box.getByText("1 000 FCFA short.")).toBeVisible();
@@ -389,6 +389,6 @@ test("dashboard, reports with a cash count, and the Boss's card of the venue", a
   // The Boss sees the venue's card with its own figures and the discrepancy.
   await login(page, boss.email, boss.password);
   await page.goto("/boss");
-  await expect(page.getByText("Received from clients").first()).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText(/cash discrepancies/).first()).toBeVisible();
+  await expect(page.locator("main").getByText("Received from clients").first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator("main").getByText(/cash discrepancies/).first()).toBeVisible();
 });

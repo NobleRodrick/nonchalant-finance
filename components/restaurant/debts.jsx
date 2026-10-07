@@ -248,7 +248,7 @@ function CustomerStatement({ customer, debts, onClose, departmentName }) {
   );
 }
 
-export function DebtsBoard({ departmentId, departmentName, todayKey, renderedAt, perms, stats: serverStats, debts: serverDebts, dishes: serverDishes }) {
+export function DebtsBoard({ departmentId, departmentName, todayKey, renderedAt, perms, stats: serverStats, debts: serverDebts, dishes: serverDishes, allowNew = true }) {
   useLiveRefresh(120);
   const record = useRecorder();
   // The server's debts + debts, repayments and cancellations recorded on this computer and not sent yet.
@@ -280,7 +280,7 @@ export function DebtsBoard({ departmentId, departmentName, todayKey, renderedAt,
         <div className="flex flex-wrap gap-2">
           {perms.manage ? (
             <>
-              <Button onClick={() => setDialog("new")}><Plus className="h-4 w-4" /> Record a debt</Button>
+              {allowNew ? <Button onClick={() => setDialog("new")}><Plus className="h-4 w-4" /> Record a debt</Button> : null}
               <Button variant="outline" onClick={() => setDialog("old")}><History className="h-4 w-4" /> Add an old debt</Button>
             </>
           ) : null}

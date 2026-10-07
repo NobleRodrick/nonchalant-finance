@@ -3,9 +3,13 @@
 A platform to run a business with several departments (FCFA, Cameroon): the owner registers the business,
 creates its departments and assigns their heads and staff.
 Each department has a **type** chosen when it is created: restaurant, bar, pressing, car wash,
-room rental, material rental, office & property rental, shop or other. **Restaurant, event venue / banquet hall, rooms / guest house, event &
-decoration rental and office & property rental are fully built**; the other types can be created and staffed and show a "coming soon" workspace until their modules
-are added. Each type declares its pages in `lib/domains/<type>.js`; the sidebar lists every department and expands
+room rental, material rental, office & property rental, shop or other. **Every type is built**: restaurant, event venue /
+banquet hall, rooms / guest house, event & decoration rental, office & property rental, and — on two shared engines
+(`docs/TRADE_AND_SERVICES_PLAN.md`) — shop, bar (tabs, crates and deposits), other activity (sales & stock: till with
+search, USB scanner and phone camera, purchases paid or on credit, average cost) and pressing, car wash (job tickets:
+price list by garment / vehicle type, express, advances, washers' commissions, loyalty). Each business has one or more **companies**; each keeps **Simple** accounting or **Full accounting
+(SYSCOHADA)**: automatic double-entry books, statements, closing, VAT, supplier bills, reconciliation and accountants
+(`docs/ACCOUNTING_PLAN.md`). Each type declares its pages in `lib/domains/<type>.js`; the sidebar lists every department and expands
 it into its pages, for the Boss and for a head of several departments.
 
 The Boss oversees and manages: business performance, departments, people, daily reports, cash and statements.

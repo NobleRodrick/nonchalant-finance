@@ -9,6 +9,7 @@ import { sendReportToBoss, reviewReport } from "@/actions/daily-report";
 import { createDepartment, updateDepartment, updateEmployee } from "@/actions/organization";
 import { loadDayStock } from "@/lib/restaurant/stock-service";
 import { buildDailyReport } from "@/lib/reports/daily-report";
+import { checkLedger } from "../support/ledger-check";
 
 const plates = async (id) => Number((await db.menuItem.findUnique({ where: { id } })).currentQuantity);
 
@@ -207,6 +208,11 @@ describe.skipIf(!hasDb)("money, purchases, debts and voids", () => {
 
   it("nothing can be recorded on a future date", async () => {
     fails(await recordMoney({ departmentId: o.deptA.id, type: "EXPENSE", amount: 100, category: "opex-gas", dateKey: "2999-01-01", idempotencyKey: key() }), /future/);
+  });
+
+  it("the ledger (Full accounting) agrees with the statements, month by month", async () => {
+    const r = await checkLedger({ organizationId: o.org.id, boss: o.boss });
+    expect(r.built.posted).toBeGreaterThan(0);
   });
 });
 

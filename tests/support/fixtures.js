@@ -186,3 +186,26 @@ export async function setupPropertyOrganization(label = "Rentals") {
   const buildings = await db.propertyBuilding.findMany({ where: { departmentId: rentals.id }, orderBy: { sortOrder: "asc" } });
   return { org, boss, rentals, main: buildings[0], etoilee: buildings[1], head: user("phead"), head2: user("phead2") };
 }
+
+/**
+ * A business with one department of each trade and service type (shop, bar, pressing, car wash,
+ * other) and one head for all of them.
+ */
+export async function setupTradeOrganization(label = "Trade") {
+  const tag = uid();
+  cookieJar.clear();
+  ok(await registerBoss({ name: `Boss ${tag}`, email: `tboss-${tag}@test.local`, password: "Baobab-2468" }));
+  const names = { SHOP: "Shop", BAR: "Bar", PRESSING: "Pressing", CAR_WASH: "Car wash", OTHER: "Salon" };
+  ok(
+    await createOrganization({
+      name: `${label} ${tag}`,
+      departments: Object.entries(names).map(([domain, name]) => ({ name, domain })),
+      initialEmployees: [{ name: "Trade head", title: "Manager", email: `thead-${tag}@test.local`, tempPassword: "Kola-24680", departmentNames: Object.values(names) }],
+    })
+  );
+  const boss = await db.user.findUnique({ where: { email: `tboss-${tag}@test.local` } });
+  await headsChoseTheirPasswords(boss.organizationId);
+  const org = await db.organization.findUnique({ where: { id: boss.organizationId }, include: { departments: true, users: true } });
+  const d = (n) => org.departments.find((x) => x.name === n);
+  return { org, boss, shop: d("Shop"), bar: d("Bar"), pressing: d("Pressing"), carWash: d("Car wash"), other: d("Salon"), head: org.users.find((u) => u.email.startsWith(`thead-${tag}`)) };
+}

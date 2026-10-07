@@ -10,6 +10,8 @@ import { formatMoney } from "@/lib/format";
 import { PageHeader, StatCard } from "@/components/kit/primitives";
 import { PeriodPicker } from "@/components/kit/period-picker";
 import { PurchasesBoard } from "@/components/rental/purchases/purchases-board";
+import { TradePurchasesPage } from "@/components/trade/pages/trade-purchases-page";
+import { TRADE_DOMAINS } from "@/lib/domains/trade";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Purchases" };
@@ -18,7 +20,9 @@ export const metadata = { title: "Purchases" };
 export default async function PurchasesPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = (await searchParams) || {};
-  const { user, department, domain, perms } = await departmentPage(deptId, { module: "purchases" });
+  const page = await departmentPage(deptId, { module: "purchases" });
+  if (TRADE_DOMAINS.includes(page.department.domain)) return <TradePurchasesPage page={page} searchParams={sp} />;
+  const { user, department, domain, perms } = page;
   const { todayKey, timeZone } = pageDate(user, null);
   const range = resolvePeriod(sp, todayKey, "month");
   const { start, end } = rangeBounds(range.fromKey, range.toKey, timeZone);

@@ -39,9 +39,9 @@ describe("business days in Africa/Douala", () => {
 });
 
 describe("department types and roles", () => {
-  it("the restaurant, event venue, rooms, event rental and property rental types are enabled; every type has a label and description", () => {
+  it("every department type is enabled; every type has a label and description", () => {
     expect(DOMAIN_LIST.map((d) => d.key)).toEqual(["RESTAURANT", "EVENT_VENUE", "ROOM_RENTAL", "BAR", "PRESSING", "CAR_WASH", "MATERIAL_RENTAL", "PROPERTY_RENTAL", "SHOP", "OTHER"]);
-    expect(DOMAIN_LIST.filter((d) => d.enabled).map((d) => d.key)).toEqual(["RESTAURANT", "EVENT_VENUE", "ROOM_RENTAL", "MATERIAL_RENTAL", "PROPERTY_RENTAL"]);
+    expect(DOMAIN_LIST.filter((d) => d.enabled).map((d) => d.key)).toEqual(DOMAIN_LIST.map((d) => d.key));
     expect(getDomain("PRESSING").label).toBe("Pressing (dress wash)");
     expect(DOMAIN_LIST.every((d) => d.description.length > 10)).toBe(true);
   });
@@ -49,7 +49,11 @@ describe("department types and roles", () => {
     const rest = { id: "d1", domain: "RESTAURANT" };
     expect(departmentNavigation(rest, "HEAD").map((n) => n.id)).toEqual(["home", "sell", "menu-stock", "money", "debts", "cash", "report", "history"]);
     expect(departmentNavigation(rest, "ADMIN").map((n) => n.id)).toEqual(["home", "menu-stock", "money", "debts", "report", "history"]);
-    expect(departmentNavigation({ id: "d2", domain: "BAR" }, "HEAD").map((n) => n.id)).toEqual(["home"]);
+    expect(departmentNavigation({ id: "d2", domain: "BAR" }, "HEAD").map((n) => n.id)).toEqual(["home", "sell", "products", "stock", "crates", "purchases", "debts", "money", "reports", "search", "cash", "settings"]);
+    // The Boss oversees: no till, no cash handover.
+    expect(departmentNavigation({ id: "d3", domain: "SHOP" }, "ADMIN").map((n) => n.id)).toEqual(["home", "products", "stock", "purchases", "debts", "money", "reports", "search", "settings"]);
+    expect(departmentNavigation({ id: "d4", domain: "CAR_WASH" }, "HEAD").map((n) => n.id)).toEqual(["home", "tickets", "prices", "workers", "customers", "money", "reports", "search", "cash", "settings"]);
+    expect(departmentNavigation({ id: "d5", domain: "OTHER" }, "HEAD").find((n) => n.id === "tickets").href).toBe("/d/d5/tickets");
     expect(departmentNavigation(rest, "HEAD")[1].href).toBe("/d/d1/sell");
     expect(departmentNavigation(rest, null)).toEqual([]);
   });

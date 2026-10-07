@@ -8,6 +8,7 @@ import { rentalReport, rentalStatementFigures, rentalSummary, rentalTrends } fro
 import { depreciationBetween, addMonths } from "@/lib/assets/depreciation";
 import { buildStatements } from "@/lib/finance/statements";
 import { rentalSearch } from "@/lib/rental/search";
+import { checkLedger } from "../support/ledger-check";
 
 vi.mock("@/lib/inngest/client", () => ({ inngest: { send: async () => {}, createFunction: (c, t, h) => ({ c, t, h }) } }));
 
@@ -119,5 +120,10 @@ describe.skipIf(!hasDb)("event rental: reports agree with the reference period",
     ok(await countRentalCash({ departmentId: o.deco.id, countedCash: expected - 1000, notes: "Change given twice" }));
     const again = await rentalReport({ departmentId: o.deco.id, organizationId: o.org.id, fromKey: t, toKey: t, timeZone: TZ, todayKey: t });
     expect(again.verification.counts).toEqual([expect.objectContaining({ dateKey: t, variance: -1000 })]);
+  });
+
+  it("the ledger (Full accounting) agrees with the statements, month by month", async () => {
+    const r = await checkLedger({ organizationId: o.org.id, boss: o.boss });
+    expect(r.built.posted).toBeGreaterThan(0);
   });
 });

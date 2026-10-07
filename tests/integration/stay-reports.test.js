@@ -9,6 +9,7 @@ import { staysReport, staySummary } from "@/lib/rooms/reports";
 import { buildStatements } from "@/lib/finance/statements";
 import { bossOverview } from "@/lib/boss/overview";
 import { apartmentProfitability, guestBalances, occupancy, registerValueAt } from "@/lib/rooms/report-math";
+import { checkLedger } from "../support/ledger-check";
 
 describe("guest house report math (pure)", () => {
   it("guest balances: owed for nights stayed vs advances for nights to come", () => {
@@ -130,5 +131,10 @@ describe.skipIf(!hasDb)("Executive Stay: reports agree with the records", () => 
     expect(ov.series.at(-2)).toMatchObject({ moneyIn: 30000 });
     const s = await staySummary({ department: o.stay, organizationId: o.org.id, fromKey: t, toKey: t, timeZone: "Africa/Douala" });
     expect(s).toMatchObject({ revenue: 63000, result: 23000, best: { name: "Apartment 1" } });
+  });
+
+  it("the ledger (Full accounting) agrees with the statements, month by month", async () => {
+    const r = await checkLedger({ organizationId: o.org.id, boss: o.boss });
+    expect(r.built.posted).toBeGreaterThan(0);
   });
 });

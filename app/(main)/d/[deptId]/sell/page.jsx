@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/kit/primitives";
 import { DateNav } from "@/components/kit/date-nav";
 import { DayBanner } from "@/components/departments/day-banner";
 import { PointOfSale } from "@/components/restaurant/pos";
+import { TradeSellPage } from "@/components/trade/pages/trade-sell-page";
+import { TRADE_DOMAINS } from "@/lib/domains/trade";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Sell" };
@@ -14,7 +16,10 @@ export const metadata = { title: "Sell" };
 export default async function SellPage({ params, searchParams }) {
   const { deptId } = await params;
   const sp = await searchParams;
-  const { user, department, perms, renderedAt } = await departmentPage(deptId, { module: "sell" });
+  const page = await departmentPage(deptId, { module: "sell" });
+  // Shop, bar, other activity: their own till (products, barcodes, tabs).
+  if (TRADE_DOMAINS.includes(page.department.domain)) return <TradeSellPage page={page} searchParams={sp} />;
+  const { user, department, perms, renderedAt } = page;
   const { dateKey, todayKey, isToday, timeZone } = pageDate(user, sp?.date);
   const { start, end } = dayBounds(startOfDateKey(dateKey, timeZone), timeZone);
   const [dishes, debtors, sales, status] = await Promise.all([

@@ -106,7 +106,29 @@ function PropertyFigures({ c }) {
   );
 }
 
-const FIGURES = { RESTAURANT: RestaurantFigures, EVENT_VENUE: VenueFigures, ROOM_RENTAL: RoomsFigures, MATERIAL_RENTAL: RentalFigures, PROPERTY_RENTAL: PropertyFigures };
+/** Shop, bar, other: sales of the day, stock, customers' debts, tabs and crates; jobs (job tickets). */
+function TradeFigures({ c }) {
+  const t = c.trade;
+  const j = c.services;
+  return (
+    <>
+      {t ? <Line label="Sales today"><Money value={t.sales} /> <span className="text-xs text-slate-400">({countOf(t.salesCount, "sale")})</span></Line> : null}
+      {t ? <Line label="Stock value"><Money value={t.stockValue} /></Line> : null}
+      {t || c.debts ? <Line label="Owed by customers"><Money value={c.debts + (j?.owing || 0)} /></Line> : null}
+      {j ? <Line label={c.domain === "CAR_WASH" ? "Washed today" : "Collected today"}>{j.collectedToday} · <Money value={j.revenueToday} /></Line> : null}
+      {j ? <Line label={c.domain === "CAR_WASH" ? "In the queue" : "In the shop"}>{j.open} <span className="text-xs text-slate-400">({j.ready} ready)</span></Line> : null}
+      {j && j.owing && !t ? <Line label="Left without paying"><Money value={j.owing} /></Line> : null}
+      <Handed c={c} />
+      {t?.tabs ? <div className="text-xs text-sky-700">{countOf(t.tabs, "tab")} open</div> : null}
+      {t?.cratesOwed ? <div className="text-xs text-slate-500">{countOf(t.cratesOwed, "crate")} to give back to suppliers</div> : null}
+      {t?.empty ? <div className="text-xs font-medium text-rose-700">{countOf(t.empty, "product")} out of stock</div> : null}
+      {t?.low ? <div className="text-xs text-amber-700">{countOf(t.low, "product")} running low</div> : null}
+      {j?.late ? <div className="text-xs font-medium text-rose-700">{countOf(j.late, "ticket")} late</div> : null}
+    </>
+  );
+}
+
+const FIGURES = { RESTAURANT: RestaurantFigures, EVENT_VENUE: VenueFigures, ROOM_RENTAL: RoomsFigures, MATERIAL_RENTAL: RentalFigures, PROPERTY_RENTAL: PropertyFigures, SHOP: TradeFigures, BAR: TradeFigures, PRESSING: TradeFigures, CAR_WASH: TradeFigures, OTHER: TradeFigures };
 
 /** The figures of a department card on the Boss overview, by department type (lib/domains). */
 export function CardFigures({ card }) {

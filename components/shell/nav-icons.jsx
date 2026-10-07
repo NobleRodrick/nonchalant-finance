@@ -1,15 +1,15 @@
 import { createElement } from "react";
 import {
-  ArrowLeftRight, BarChart3, BedDouble, Bell, BookUser, Boxes, Building2, CalendarDays, Circle, ClipboardList, FileCheck2,
+  ArrowLeftRight, BarChart3, BedDouble, Bell, BookOpen, BookUser, Boxes, Building2, CalendarDays, Circle, ClipboardList, FileCheck2,
   FileText, Gauge, HandCoins, History, LayoutDashboard, LayoutGrid, LineChart, Package, Settings, ShoppingCart,
-  Landmark, Search, SlidersHorizontal, Target, Users, UtensilsCrossed, Wrench,
+  Landmark, Search, SlidersHorizontal, Target, Users, UtensilsCrossed, Wrench, Beer, Car, Shirt, Store, Tags, Truck, Wine,
 } from "lucide-react";
 
 /** Icons the navigation may name (lib/domains navigation entries, the Boss's own section). */
 const NAV_ICONS = {
-  ArrowLeftRight, BarChart3, BedDouble, Bell, BookUser, Boxes, Building2, CalendarDays, ClipboardList, FileCheck2, FileText,
+  ArrowLeftRight, BarChart3, BedDouble, Bell, BookOpen, BookUser, Boxes, Building2, CalendarDays, ClipboardList, FileCheck2, FileText,
   Gauge, HandCoins, History, LayoutDashboard, LayoutGrid, LineChart, Package, Settings, ShoppingCart, SlidersHorizontal,
-  Landmark, Search, Target, Users, UtensilsCrossed, Wrench,
+  Landmark, Search, Target, Users, UtensilsCrossed, Wrench, Beer, Car, Shirt, Store, Tags, Truck, Wine,
 };
 
 /** The icon named `name` (a circle for an unknown name). */

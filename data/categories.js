@@ -10,6 +10,12 @@ const V = ["EVENT_VENUE"];
 const S = ["ROOM_RENTAL"];
 const M = ["MATERIAL_RENTAL"];
 const PR = ["PROPERTY_RENTAL"];
+const SH = ["SHOP"];
+const BA = ["BAR"];
+const PS = ["PRESSING"];
+const CW = ["CAR_WASH"];
+const TR = ["SHOP", "BAR", "OTHER"];
+const SV = ["PRESSING", "CAR_WASH", "OTHER"];
 
 export const MONEY_CATEGORIES = {
   RENT_INCOME: [
@@ -29,6 +35,11 @@ export const MONEY_CATEGORIES = {
     { id: "property-parking", label: "Parking & signage", domains: PR, operationCategory: "OTHER_INCOME" },
     { id: "property-short-use", label: "Hall or space used by the day", domains: PR, operationCategory: "OTHER_INCOME" },
     { id: "property-penalties", label: "Penalties received (late payment, breach)", domains: PR, operationCategory: "OTHER_INCOME" },
+    { id: "shop-services", label: "Services (delivery, phone credit commission, printing …)", domains: SH, operationCategory: "OTHER_INCOME" },
+    { id: "bar-hall-hire", label: "Space or terrace hired for an event", domains: BA, operationCategory: "OTHER_INCOME" },
+    { id: "bar-entry-fees", label: "Entry fees (concert, match screening)", domains: BA, operationCategory: "OTHER_INCOME" },
+    { id: "pressing-alterations", label: "Alterations and repairs of garments", domains: PS, operationCategory: "OTHER_INCOME" },
+    { id: "carwash-products", label: "Car products sold (air fresheners, wipers …)", domains: CW, operationCategory: "OTHER_INCOME" },
     { id: "income-other", label: "Other income", operationCategory: "OTHER_INCOME" },
   ],
   DISCOUNT: [
@@ -37,6 +48,8 @@ export const MONEY_CATEGORIES = {
     { id: "discount-staff", label: "Staff meal / staff discount", operationCategory: "DISCOUNT_STAFF" },
   ],
   PURCHASE: [
+    { id: "purchase-goods", label: "Goods for resale (from Purchases)", domains: TR, operationCategory: "PURCHASE_STOCK", internal: true },
+    { id: "purchase-drinks", label: "Drinks for resale (from Purchases)", domains: BA, operationCategory: "PURCHASE_DRINK", internal: true },
     { id: "purchase-food", label: "Food ingredients", operationCategory: "PURCHASE_FOOD" },
     { id: "purchase-ready", label: "Ready-made dishes", operationCategory: "PURCHASE_STOCK" },
     { id: "purchase-supplies", label: "Kitchen supplies", operationCategory: "PURCHASE_SUPPLIES" },
@@ -64,6 +77,20 @@ export const MONEY_CATEGORIES = {
     { id: "rental-repairs", label: "Repairs of damaged items (from Stock)", domains: M, operationCategory: "OPEX_MAINTENANCE", internal: true },
     // Items added to the rental stock or the asset register: an investment, not an expense (recorded from Purchases).
     { id: "rental-stock", label: "Rental items & equipment bought (investment)", domains: M, operationCategory: "PURCHASE_STOCK", capital: true, internal: true },
+    { id: "trade-shop-rent", label: "Rent of the shop / premises", domains: [...TR, ...SV], operationCategory: "OPEX_OTHER" },
+    { id: "trade-council-tax", label: "Council taxes & licences (impôt libératoire, patente)", domains: [...TR, ...SV], operationCategory: "OTHER_EXPENSE" },
+    { id: "bar-ice", label: "Ice and cooling", domains: BA, operationCategory: "OPEX_OTHER" },
+    { id: "bar-music", label: "Music, DJ, TV subscription", domains: BA, operationCategory: "OPEX_OTHER" },
+    { id: "bar-grill", label: "Grill supplies (charcoal, spices, fish, meat)", domains: BA, operationCategory: "PURCHASE_FOOD" },
+    { id: "bar-security", label: "Security & waiters", domains: BA, operationCategory: "OPEX_SALARIES" },
+    { id: "pressing-detergent", label: "Detergents, solvents & chemicals", domains: PS, operationCategory: "PURCHASE_SUPPLIES" },
+    { id: "pressing-packaging", label: "Hangers, bags & tags", domains: PS, operationCategory: "OPEX_OTHER" },
+    { id: "pressing-machines", label: "Machine repairs (washers, irons, dryers)", domains: PS, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "pressing-compensation", label: "Compensation for a damaged or lost garment", domains: PS, operationCategory: "OPEX_OTHER", internal: true },
+    { id: "carwash-products-used", label: "Soap, wax & cleaning products", domains: CW, operationCategory: "PURCHASE_SUPPLIES" },
+    { id: "carwash-equipment", label: "Pressure washer & vacuum repairs", domains: CW, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "carwash-commission", label: "Washers' commissions (from Washers)", domains: CW, operationCategory: "OPEX_SALARIES", internal: true },
+    { id: "trade-shrinkage", label: "Goods given away or used by the business", domains: TR, operationCategory: "OPEX_OTHER" },
     { id: "opex-gas", domains: R, label: "Cooking gas / charcoal", operationCategory: "OPEX_UTILITIES" },
     { id: "opex-electricity", label: "Electricity", operationCategory: "OPEX_UTILITIES" },
     { id: "opex-water", label: "Water", operationCategory: "OPEX_UTILITIES" },
@@ -126,5 +153,15 @@ export function categoryLabel(id) {
   if (id === "lease-refund") return "Refund to tenant";
   if (id === "lease-deposit") return "Deposit received";
   if (id === "lease-deposit-refund") return "Deposit refunded";
+  if (id === "supplier-payment") return "Supplier bill paid";
+  if (id === "sale-goods") return "Sale";
+  if (id === "sale-drinks") return "Sale (drinks)";
+  if (id === "sale-other") return "Sale";
+  if (id === "ticket-payment") return "Ticket payment";
+  if (id === "ticket-refund") return "Ticket refund";
+  if (id === "packaging-deposit") return "Deposit on bottles / crates received";
+  if (id === "packaging-deposit-refund") return "Deposit on bottles / crates refunded";
+  if (id === "packaging-deposit-paid") return "Deposit on crates paid to the supplier";
+  if (id === "packaging-deposit-back") return "Deposit on crates refunded by the supplier";
   return id.replace(/^[a-z]+-/, "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

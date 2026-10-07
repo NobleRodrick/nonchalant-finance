@@ -32,7 +32,7 @@ const THINK_MAX = Number(process.env.THINK_MAX || 12000);
 const TIMEOUT = 30_000;
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || "");
 if (!process.env.JWT_SECRET) throw new Error("Set JWT_SECRET (the server's).");
-const { orgs, stays = [], rentals = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED || "load-seed.json", "utf8"));
+const { orgs, stays = [], rentals = [], properties = [], trades = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED || "load-seed.json", "utf8"));
 
 const stats = new Map(); // label → { ms: [], errors, rejected }
 const stat = (label) => stats.get(label) || stats.set(label, { ms: [], errors: 0, rejected: 0 }).get(label);
@@ -216,6 +216,73 @@ const ROLES = {
       [1, () => page(cookie, "rental reports (boss)", `/d/${o.rentalId}/reports?period=month`)],
     ])();
   },
+  async propertyHead(o, cookie) {
+    const d = `/d/${o.propertyId}`;
+    await pick([
+      [3, () => page(cookie, "property dashboard", d)],
+      [2, () => page(cookie, "offices", `${d}/offices`)],
+      [2, () => page(cookie, "arrears", `${d}/arrears`)],
+      [1, () => page(cookie, "contract", `${d}/contracts/${o.leaseIds[Math.floor(Math.random() * o.leaseIds.length)]}`)],
+      [3, () => op(cookie, "record a rent payment", "property.payment.record", { departmentId: o.propertyId, leaseId: o.leaseIds[Math.floor(Math.random() * o.leaseIds.length)], amount: 5000 + Math.floor(Math.random() * 50000) })],
+      [1, () => op(cookie, "record a property expense", "money.record", { departmentId: o.propertyId, type: "EXPENSE", amount: 7500, category: "property-security", description: "Guards", counterparty: "SecurCam" })],
+    ])();
+  },
+  async propertyHead2(o, cookie) {
+    const d = `/d/${o.propertyId}`;
+    await pick([
+      [2, () => page(cookie, "property reports", `${d}/reports?period=month`)],
+      [1, () => page(cookie, "property billing", `${d}/billing`)],
+      [1, () => page(cookie, "tenants", `${d}/tenants`)],
+      [1, () => page(cookie, "property search", `${d}/search?q=owing more than 10000`)],
+    ])();
+  },
+  async propertyBoss(o, cookie) {
+    const a = `/accounting/${o.companyId}`;
+    await pick([
+      [2, () => page(cookie, "boss overview", "/boss")],
+      [2, () => page(cookie, "books overview", a)],
+      [2, () => page(cookie, "income statement", `${a}/statements`)],
+      [1, () => page(cookie, "balance sheet", `${a}/statements?tab=balance`)],
+      [1, () => page(cookie, "trial balance", `${a}/trial-balance`)],
+      [1, () => page(cookie, "journal entries", `${a}/entries`)],
+      [1, () => page(cookie, "customers ageing", `${a}/partners`)],
+    ])();
+  },
+  async tradeHead(o, cookie) {
+    const shop = `/d/${o.shopId}`;
+    const bar = `/d/${o.barId}`;
+    const p = o.productIds[Math.floor(Math.random() * o.productIds.length)];
+    await pick([
+      [4, () => op(cookie, "shop sale", "trade.sale.record", { departmentId: o.shopId, lines: [{ productId: p, quantity: 1 + Math.floor(Math.random() * 3) }], paymentMethod: Math.random() < 0.2 ? "CREDIT" : "CASH", debtor: { name: `Customer ${Math.floor(Math.random() * 20)}` } })],
+      [3, () => op(cookie, "bar sale", "trade.sale.record", { departmentId: o.barId, lines: [{ productId: o.drinkId, quantity: 2 }] })],
+      [2, () => page(cookie, "shop till", `${shop}/sell`)],
+      [1, () => page(cookie, "shop dashboard", shop)],
+      [1, () => page(cookie, "bar dashboard", bar)],
+      [1, () => page(cookie, "stock", `${shop}/stock`)],
+      [1, () => op(cookie, "bar purchase", "trade.purchase.record", { departmentId: o.barId, supplierName: "SABC", lines: [{ productId: o.drinkId, quantity: 24, unitCost: 500 }], paymentMethod: Math.random() < 0.5 ? "CASH" : "CREDIT", crates: [{ packagingId: o.crateId, quantity: 2 }] })],
+    ])();
+  },
+  async serviceHead(o, cookie) {
+    const wash = `/d/${o.carWashId}`;
+    await pick([
+      [3, async () => {
+        const t = await op(cookie, "wash arrives", "services.ticket.create", { departmentId: o.carWashId, vehiclePlate: `LT${Math.floor(Math.random() * 9000) + 1000}`, lines: [{ itemId: o.washItemId, quantity: 1, workerId: o.workerId }], start: true });
+        if (t?.ticketId) await op(cookie, "wash collected", "services.ticket.step", { departmentId: o.carWashId, ticketId: t.ticketId, step: "collect", payment: { amount: t.total, paymentMethod: "CASH" } });
+      }],
+      [2, () => op(cookie, "pressing drop-off", "services.ticket.create", { departmentId: o.pressingId, customerName: "Mme Ngo", lines: [{ itemId: o.pressItemId, variant: "Shirt", quantity: 3 }], payment: { amount: 500, paymentMethod: "CASH" } })],
+      [2, () => page(cookie, "car wash queue", wash)],
+      [1, () => page(cookie, "tickets", `/d/${o.pressingId}/tickets`)],
+      [1, () => page(cookie, "washers", `${wash}/workers`)],
+    ])();
+  },
+  async tradeBoss(o, cookie) {
+    await pick([
+      [2, () => page(cookie, "boss overview", "/boss")],
+      [2, () => page(cookie, "shop reports (boss)", `/d/${o.shopId}/reports?period=month`)],
+      [1, () => page(cookie, "car wash reports (boss)", `/d/${o.carWashId}/reports?period=month`)],
+      [1, () => page(cookie, "income statement", `/accounting/${o.companyId}/statements`)],
+    ])();
+  },
   async boss(o, cookie) {
     await pick([
       [3, () => page(cookie, "boss overview", "/boss")],
@@ -244,10 +311,12 @@ async function main() {
     ...orgs.flatMap((o) => [["venueHead", o, o.venueHeadId, "HEAD"], ["restHead", o, o.restHeadId, "HEAD"], ["boss", o, o.bossId, "ADMIN"]]),
     ...stays.flatMap((o) => [["stayHead", o, o.headId, "HEAD"], ["stayHead2", o, o.head2Id, "HEAD"], ["stayBoss", o, o.bossId, "ADMIN"]]),
     ...rentals.flatMap((o) => [["rentalHead", o, o.headId, "HEAD"], ["rentalHead2", o, o.head2Id, "HEAD"], ["rentalBoss", o, o.bossId, "ADMIN"]]),
+    ...properties.flatMap((o) => [["propertyHead", o, o.headId, "HEAD"], ["propertyHead2", o, o.head2Id, "HEAD"], ["propertyBoss", o, o.bossId, "ADMIN"]]),
+    ...trades.flatMap((o) => [["tradeHead", o, o.headId, "HEAD"], ["serviceHead", o, o.headId, "HEAD"], ["tradeBoss", o, o.bossId, "ADMIN"]]),
   ];
   const t0 = Date.now();
   const end = t0 + RAMP + DURATION;
-  console.log(`${people.length} people in ${orgs.length + stays.length + rentals.length} businesses · ramp ${RAMP / 1000}s · ${DURATION / 1000}s at full load · think ${THINK_MIN}–${THINK_MAX} ms · ${BASES.join(", ")}`);
+  console.log(`${people.length} people in ${orgs.length + stays.length + rentals.length + properties.length + trades.length} businesses · ramp ${RAMP / 1000}s · ${DURATION / 1000}s at full load · think ${THINK_MIN}–${THINK_MAX} ms · ${BASES.join(", ")}`);
   const ticker = setInterval(() => {
     const done = [...stats.values()].reduce((s, x) => s + x.ms.length + x.errors, 0);
     console.log(`  ${Math.round((Date.now() - t0) / 1000)}s: ${done} requests`);

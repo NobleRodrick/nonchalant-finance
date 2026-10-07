@@ -13,6 +13,7 @@ import { buildStatements } from "@/lib/finance/statements";
 import { bossOverview } from "@/lib/boss/overview";
 import { db } from "@/lib/prisma";
 import { venueReminders, sendVenueReminders } from "@/lib/venue/reminders";
+import { checkLedger } from "../support/ledger-check";
 
 /**
  * A reference period of an event venue, with every kind of record, and the figures every report
@@ -125,6 +126,11 @@ describe.skipIf(!hasDb)("event venue: reports agree with the records", () => {
     expect(ov.kpis).toMatchObject({ moneyIn: 625000, moneyOut: 56000, result: 569000, debtsOwed: 900000 });
     expect(ov.kpis.month.result).toBeGreaterThanOrEqual(569000);
     expect(ov.alerts.some((a) => /cash discrepancies/.test(a.text))).toBe(true);
+  });
+
+  it("the ledger (Full accounting) agrees with the statements, month by month", async () => {
+    const r = await checkLedger({ organizationId: o.org.id, boss: o.boss });
+    expect(r.built.posted).toBeGreaterThan(0);
   });
 });
 

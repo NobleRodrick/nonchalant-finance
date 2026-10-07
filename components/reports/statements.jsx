@@ -64,7 +64,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
     const rows = [["Springer Finance", organizationName], ["Period", range.label], ["Departments", scopeLabel], []];
     if (tab === "income") {
       rows.push(["Line", "Amount (FCFA)", "Previous period", "Change %"]);
-      [["Sales", "salesGross"], ["Rent income", "rentIncome"], ["Events (venues, rentals)", "eventsRevenue"], ["Nights stayed (guest house)", "staysRevenue"], ["Office rent and tenant charges", "rentRevenue"], ["Kept from cancelled bookings", "cancellationIncome"], ["Gains on assets sold", "assetGains"], ["Other income", "otherIncome"], ["Total money in", "moneyIn"], ["Discounts", "discounts"], ["Purchases", "purchases"], ["Expenses", "expenses"], ["Other expenses", "otherExpenses"], ["Assets lost", "assetLosses"], ["Depreciation", "depreciation"], ["Total money out", "moneyOut"], ["Result", "result"]].forEach(([l, k]) =>
+      [["Sales", "salesGross"], ["Rent income", "rentIncome"], ["Events (venues, rentals)", "eventsRevenue"], ["Nights stayed (guest house)", "staysRevenue"], ["Office rent and tenant charges", "rentRevenue"], ["Job tickets collected (pressing, car wash, jobs)", "servicesRevenue"], ["Kept from cancelled bookings", "cancellationIncome"], ["Gains on assets sold", "assetGains"], ["Other income", "otherIncome"], ["Total money in", "moneyIn"], ["Discounts", "discounts"], ["Purchases", "purchases"], ["Expenses", "expenses"], ["Other expenses", "otherExpenses"], ["Assets lost", "assetLosses"], ["Depreciation", "depreciation"], ["Debts written off", "badDebts"], ["Change in stock of goods", "stockChange"], ["Total money out", "moneyOut"], ["Result", "result"]].forEach(([l, k]) =>
         rows.push([l, income[k], cmp?.[k] ?? "", income.change?.[k] ?? ""])
       );
     } else if (tab === "stock") {
@@ -152,6 +152,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
                   {income.eventsRevenue || cmp?.eventsRevenue ? <Row label="Events (venues and rentals, on their date)" value={income.eventsRevenue} previous={cmp?.eventsRevenue} change={income.change?.eventsRevenue} indent /> : null}
                   {income.staysRevenue || cmp?.staysRevenue ? <Row label="Nights stayed (guest house, on their date)" value={income.staysRevenue} previous={cmp?.staysRevenue} change={income.change?.staysRevenue} indent /> : null}
                   {income.rentRevenue || cmp?.rentRevenue ? <Row label="Office rent and tenant charges (on their month)" value={income.rentRevenue} previous={cmp?.rentRevenue} change={income.change?.rentRevenue} indent /> : null}
+                  {income.servicesRevenue || cmp?.servicesRevenue ? <Row label="Job tickets collected (pressing, car wash, jobs)" value={income.servicesRevenue} previous={cmp?.servicesRevenue} change={income.change?.servicesRevenue} indent /> : null}
                   {income.cancellationIncome || cmp?.cancellationIncome ? <Row label="Kept from cancelled bookings" value={income.cancellationIncome} previous={cmp?.cancellationIncome} change={income.change?.cancellationIncome} indent /> : null}
                   {income.assetGains || cmp?.assetGains ? <Row label="Gains on assets sold" value={income.assetGains} previous={cmp?.assetGains} change={income.change?.assetGains} indent /> : null}
                   <Row label="Other income" value={income.otherIncome} previous={cmp?.otherIncome} change={income.change?.otherIncome} indent href={drill("OTHER_INCOME")} />
@@ -163,6 +164,8 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
                   <Row label="Other expenses" value={income.otherExpenses} previous={cmp?.otherExpenses} change={income.change?.otherExpenses} indent sign="-" href={drill("OTHER_EXPENSE")} />
                   {income.assetLosses || cmp?.assetLosses ? <Row label="Assets lost" value={income.assetLosses} previous={cmp?.assetLosses} change={income.change?.assetLosses} indent sign="-" /> : null}
                   {income.depreciation || cmp?.depreciation ? <Row label="Depreciation of assets" value={income.depreciation} previous={cmp?.depreciation} change={income.change?.depreciation} indent sign="-" /> : null}
+                  {income.badDebts || cmp?.badDebts ? <Row label="Debts written off" value={income.badDebts} previous={cmp?.badDebts} change={income.change?.badDebts} indent sign="-" /> : null}
+                  {income.stockChange || cmp?.stockChange ? <Row label="Change in stock of goods (bought but not sold: −; stock used up: +)" value={income.stockChange} previous={cmp?.stockChange} change={income.change?.stockChange} indent sign="-" /> : null}
                   <Row label="Total money out" value={income.moneyOut} previous={cmp?.moneyOut} change={income.change?.moneyOut} strong sign="-" />
                   <tr><td colSpan={4} className="h-3" /></tr>
                   <Row label="Result (profit / loss)" value={income.result} previous={cmp?.result} change={income.change?.result} strong />
@@ -177,7 +180,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
             <div className="space-y-6">
               <div>
                 <div className="mb-2 text-sm font-semibold">Where the money went</div>
-                <HBars color="#f43f5e" rows={[{ label: "Discounts", value: income.discounts }, { label: "Purchases", value: income.purchases }, { label: "Expenses", value: income.expenses }, { label: "Other expenses", value: income.otherExpenses }, ...(income.assetLosses ? [{ label: "Assets lost", value: income.assetLosses }] : []), ...(income.depreciation ? [{ label: "Depreciation", value: income.depreciation }] : [])]} />
+                <HBars color="#f43f5e" rows={[{ label: "Discounts", value: income.discounts }, { label: "Purchases", value: income.purchases }, { label: "Expenses", value: income.expenses }, { label: "Other expenses", value: income.otherExpenses }, ...(income.assetLosses ? [{ label: "Assets lost", value: income.assetLosses }] : []), ...(income.depreciation ? [{ label: "Depreciation", value: income.depreciation }] : []), ...(income.badDebts ? [{ label: "Debts written off", value: income.badDebts }] : []), ...(income.stockChange > 0 ? [{ label: "Stock used up", value: income.stockChange }] : [])]} />
               </div>
               {income.expensesByCategory.length ? (
                 <div>

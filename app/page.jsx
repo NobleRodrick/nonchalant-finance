@@ -86,7 +86,7 @@ export default async function Home() {
             {[
               ["Restaurant", "Restaurant", "RESTAURANT", "Report approved", "58 000"],
               ["Salle des fêtes", "Event venue", "EVENT_VENUE", "3 events this month", "450 000"],
-              ["Bar", "Bar", "BAR", "Coming soon", null],
+              ["Le Bar", "Bar / snack bar", "BAR", "12 crates owed back", "64 000"],
             ].map(([name, type, domain, status, result]) => (
               <div key={name} className="rounded-xl border border-slate-200 p-3">
                 <div className="flex items-center gap-2">
@@ -111,8 +111,9 @@ export default async function Home() {
         <div className="mx-auto max-w-6xl px-4">
           <h2 className="text-center text-2xl font-bold sm:text-3xl">One business, many kinds of departments</h2>
           <p className="mx-auto mt-2 max-w-2xl text-center text-slate-600">
-            Each department has a type, which gives it the right screens, stock and daily report.
-            Restaurants and event venues are ready today; the other types are on the way.
+            Each department has a type, which gives it the right screens, stock and reports: restaurant, event venue,
+            guest house, event rental, office rental, shop, bar, pressing, car wash, or any other activity. A small
+            informal business uses it as it is; a registered company adds full SYSCOHADA accounting and VAT.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {DOMAIN_LIST.map((d) => {

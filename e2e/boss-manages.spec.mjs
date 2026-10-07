@@ -22,8 +22,8 @@ async function toast(page, text) {
 test("the homepage presents a business platform, restaurant being the first type", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run every part of your business from one place");
-  await expect(page.getByText("Available now")).toHaveCount(5); // restaurant, event venue, rooms, event rental, property rental
-  await expect(page.getByText("Coming soon").first()).toBeVisible();
+  await expect(page.getByText("Available now")).toHaveCount(10); // every department type is built
+  await expect(page.getByText("Coming soon")).toHaveCount(0);
   for (const t of ["You, the Boss", "Your department heads", "Two roles, clearly split", "Register your business", "Add your department heads"]) {
     await expect(page.getByText(t).first()).toBeVisible();
   }

@@ -58,3 +58,5 @@ next-env.d.ts
 
 # one-off update folders copied into the project
 /_update-*/
+demo.json
+load-seed.json

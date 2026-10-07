@@ -124,7 +124,7 @@ test("the head builds the menu and stock (add, correct, add bought stock)", asyn
   await d.getByRole("button", { name: /Add 10 plates/ }).click();
   await toast(page, "10 plate(s) added (A-0003) · purchase P-0001");
 
-  const totals = page.getByTestId("menu-stock-totals");
+  const totals = page.locator("main").getByTestId("menu-stock-totals");
   await expect(totals).toContainText("39");
   await expect(totals).toContainText(`${money(30 * 2000 + 9 * 3000)} FCFA`);
   await logout(page);
@@ -138,7 +138,7 @@ test("the cashier sells: cash, on credit, and cannot sell more plates than exist
 
   const tileA = page.getByRole("button", { name: "Add Dish A" });
   for (let i = 0; i < 15; i += 1) await tileA.click();
-  await expect(page.getByTestId("cart")).toContainText("Dish A");
+  await expect(page.locator("main").getByTestId("cart")).toContainText("Dish A");
   await page.getByRole("radio", { name: "Cash" }).click();
   await page.getByRole("button", { name: /Record sale · 30 000 FCFA/ }).click();
   await toast(page, "Sale S-0001 recorded");
@@ -216,14 +216,14 @@ test("the head sells with a discount, records money in and out, debts and repaym
 
   // Menu & Stock shows the day exactly.
   await page.goto(`/d/${deptId}/menu-stock`);
-  const rowA = page.getByTestId("dish-row-Dish A");
+  const rowA = page.locator("main").getByTestId("dish-row-Dish A");
   await expect(rowA).toContainText("+30");
   await expect(rowA).toContainText("−18");
   await expect(rowA).toContainText("24 000");
-  const rowB = page.getByTestId("dish-row-Dish B");
+  const rowB = page.locator("main").getByTestId("dish-row-Dish B");
   await expect(rowB).toContainText("−8");
   await expect(rowB).toContainText("3 000");
-  await expect(page.getByTestId("menu-stock-totals")).toContainText("27 000 FCFA");
+  await expect(page.locator("main").getByTestId("menu-stock-totals")).toContainText("27 000 FCFA");
 });
 
 test("the Boss requests today's cash; the head hands it over; the Boss confirms it", async ({ page }) => {
@@ -234,12 +234,12 @@ test("the Boss requests today's cash; the head hands it over; the Boss confirms 
   await page.goto(`/d/${deptId}/cash-handover`);
   await expect(page).toHaveURL(/\/boss\/cash/);
   await page.waitForLoadState("networkidle");
-  const form = page.getByTestId("request-cash");
+  const form = page.locator("main").getByTestId("request-cash");
   await expect(form.getByRole("button", { name: "Today" })).toHaveAttribute("aria-pressed", "true");
   await form.getByLabel("Message to the head").fill("Before 20:00 please");
   await form.getByRole("button", { name: "Send request" }).click();
   await toast(page, "Request sent to Department 1");
-  await expect(page.getByTestId("cash-request-list")).toContainText("Waiting for the head");
+  await expect(page.locator("main").getByTestId("cash-request-list")).toContainText("Waiting for the head");
   await logout(page);
 
   await login(page, head.email, head.password);
@@ -250,7 +250,7 @@ test("the Boss requests today's cash; the head hands it over; the Boss confirms 
   await page.goto(`/d/${deptId}/cash-handover`);
   await page.waitForLoadState("networkidle");
   await expect(page.getByText("Cash in the drawer now").locator("xpath=../..")).toContainText("66 000 FCFA");
-  const req = page.getByTestId("cash-requests");
+  const req = page.locator("main").getByTestId("cash-requests");
   await expect(req).toContainText("Before 20:00 please");
   await expect(req).toContainText("56 000 FCFA to hand over");
   await req.getByRole("button", { name: "Hand over for this request" }).click();
@@ -261,12 +261,12 @@ test("the Boss requests today's cash; the head hands it over; the Boss confirms 
   await d.getByLabel("Amount (FCFA)").fill("60000");
   await d.getByRole("button", { name: /Hand over 60 000 FCFA/ }).click();
   await toast(page, "Handover H-0001 recorded");
-  await expect(page.getByTestId("cash-requests")).toContainText("Handed over 60 000 FCFA (H-0001)");
+  await expect(page.locator("main").getByTestId("cash-requests")).toContainText("Handed over 60 000 FCFA (H-0001)");
   await logout(page);
 
   await login(page, boss.email, boss.password);
   await page.goto("/boss/cash");
-  const list = page.getByTestId("cash-request-list");
+  const list = page.locator("main").getByTestId("cash-request-list");
   await expect(list).toContainText("Cash handed over");
   await expect(list).toContainText("H-0001");
   await page.getByRole("button", { name: "I received it" }).click();
@@ -277,7 +277,7 @@ test("the Boss requests today's cash; the head hands it over; the Boss confirms 
 test("the head counts the cash and sends the report; the Boss returns it, then approves version 2", async ({ page }) => {
   await login(page, head.email, head.password);
   await page.goto(`/d/${deptId}/report`);
-  const report = page.getByTestId("daily-report");
+  const report = page.locator("main").getByTestId("daily-report");
   await expect(report).toContainText("77 000");
   await expect(report).toContainText("19 000");
   await expect(report).toContainText("58 000");
@@ -296,7 +296,7 @@ test("the head counts the cash and sends the report; the Boss returns it, then a
   await expect(report).toContainText("−500");
   // The day is locked: Sell shows the lock and no record button works.
   await page.goto(`/d/${deptId}/sell`);
-  await expect(page.getByText(/was sent to the Boss/)).toBeVisible();
+  await expect(page.locator("main").getByText(/was sent to the Boss/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Add Dish A" })).toBeDisabled();
   await logout(page);
 
@@ -304,7 +304,7 @@ test("the head counts the cash and sends the report; the Boss returns it, then a
   await page.goto("/boss/daily-reports");
   await page.locator("tr", { hasText: "Department 1" }).getByRole("link", { name: "Open" }).click();
   await page.waitForURL(/\/boss\/daily-reports\/.+/);
-  await expect(page.getByTestId("daily-report")).toContainText("Should remain in the drawer");
+  await expect(page.locator("main").getByTestId("daily-report")).toContainText("Should remain in the drawer");
   await page.getByRole("button", { name: "Return with a note" }).click();
   d = page.getByRole("dialog");
   await d.getByLabel(/Note to the department head/).fill("Please check the other income");
@@ -337,19 +337,19 @@ test("the Boss overview and statements show the same figures", async ({ page }) 
   await expect(page.getByText("Money in today").locator("xpath=../..")).toContainText("77 000 FCFA");
   await expect(page.locator("main").getByText("Cash received", { exact: true }).locator("xpath=../..")).toContainText("60 000 FCFA");
   await page.goto("/statements?period=today");
-  const st = page.getByTestId("statement");
+  const st = page.locator("main").getByTestId("statement");
   await expect(st).toContainText("Total money in");
   await expect(st).toContainText("77 000");
   await expect(st).toContainText("(19 000)");
   await expect(st).toContainText("58 000");
   await expect(st).toContainText("Final: the daily report is approved");
-  const ai = page.getByTestId("ai-insights");
+  const ai = page.locator("main").getByTestId("ai-insights");
   await ai.getByRole("button", { name: "Get insights" }).click();
   await expect(ai).toContainText("not configured");
   await page.getByRole("tab", { name: "Stock movement" }).click();
-  await expect(page.getByTestId("statement")).toContainText("27 000");
+  await expect(page.locator("main").getByTestId("statement")).toContainText("27 000");
   await page.getByRole("tab", { name: "Debts" }).click();
-  await expect(page.getByTestId("statement")).toContainText("11 000");
+  await expect(page.locator("main").getByTestId("statement")).toContainText("11 000");
 });
 
 test("a person in two departments of different types: each department opens to its own sections", async ({ page }) => {
@@ -362,8 +362,10 @@ test("a person in two departments of different types: each department opens to i
   await laundry.click();
   await expect(laundry).toHaveAttribute("aria-expanded", "true");
   await expect(nav.getByTestId("dept-nav-Laundry").getByRole("link", { name: "Sell" })).toHaveCount(0);
-  await nav.getByTestId("dept-nav-Laundry").getByRole("link", { name: "Home" }).click();
-  await expect(page.getByText("The pressing (dress wash) department type is coming soon.")).toBeVisible();
+  // A pressing has its own sections: tickets and the price list.
+  await expect(nav.getByTestId("dept-nav-Laundry").getByRole("link", { name: "Price list" })).toBeVisible();
+  await nav.getByTestId("dept-nav-Laundry").getByRole("link", { name: "Tickets" }).click();
+  await expect(page.locator("main").getByRole("heading", { name: "Tickets" })).toBeVisible();
   // Closing a department hides its sections; the choice is remembered after a reload.
   await nav.getByTestId("dept-toggle-Department 1").click();
   await expect(nav.getByTestId("dept-nav-Department 1")).toHaveCount(0);

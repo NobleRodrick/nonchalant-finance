@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
 import { expect, test } from "@playwright/test";
+import { choosePasswordIfAsked, passwordFor } from "../e2e/support/login.mjs";
 
 /**
  * A department head keeps working while the connection is gone, then everything reaches the
@@ -11,7 +12,7 @@ test.describe.configure({ mode: "serial" });
 
 const PORT = Number(process.env.OFFLINE_E2E_PORT || 3200);
 const tag = Date.now().toString(36);
-const boss = { email: `off-boss-${tag}@e2e.local`, password: "Boss12345" };
+const boss = { email: `off-boss-${tag}@e2e.local`, password: "Plantain-2468" };
 const head = { email: `off-head-${tag}@e2e.local`, password: "" };
 let server = null;
 let deptId = "";
@@ -26,7 +27,7 @@ async function startServer() {
       JWT_SECRET: "e2e-secret-e2e-secret-e2e-secret-1234567",
       NEXT_TELEMETRY_DISABLED: "1",
     },
-    stdio: "ignore",
+    stdio: process.env.OFFLINE_SERVER_LOG ? ["ignore", "inherit", "inherit"] : "ignore",
     detached: true,
   });
   for (let i = 0; i < 120; i += 1) {
@@ -86,9 +87,11 @@ async function login(page, email, password) {
   await page.goto("/login");
   await page.waitForLoadState("networkidle");
   await page.getByLabel("E-mail").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(passwordFor(email, password));
   await page.locator("form button[type=submit]").click();
   await page.waitForURL((url) => !url.pathname.startsWith("/login"));
+  // A head created by the Boss replaces the temporary password at the first sign-in.
+  await choosePasswordIfAsked(page, email, password);
 }
 
 /** Waits until the service worker controls the page (pages opened from now on are kept). */

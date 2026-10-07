@@ -13,8 +13,9 @@ Where the Springer Finance work stands, so the next session can continue directl
   automatic daily and weekly reports — `docs/EXECUTIVE_STAY_PLAN.md`). The other types show "coming soon".
 - **Sidebar**: a Business section, then a Departments tree; each department expands into its own pages (from its
   type's `navigation` in `lib/domains/<type>.js`), for the Boss and for heads of several departments.
-- **Two roles only.** `ADMIN` = the Boss who created the business (oversees; records nothing). `HEAD` = everyone he adds;
-  they head every department they are assigned to (one or several; a department may have several heads). Job **titles**
+- **Roles:** `ADMIN` = the Boss who created the business (oversees; records nothing). `HEAD` = everyone he adds;
+  they head every department they are assigned to (one or several; a department may have several heads).
+  `ACCOUNTANT` = keeps the books of the companies the Boss gives him (Accounting only). Job **titles**
   (Accountant, Manager …) are free text set and edited by the Boss; every head carries the "Department head" tag.
 - **Boss:** Overview, Departments (add/remove heads on each card), People, Daily reports (approve / return), Cash received
   (request cash for a day or period, confirm or dispute handovers), Statements (+ AI insights), Settings. Department pages
@@ -55,6 +56,49 @@ Where the Springer Finance work stands, so the next session can continue directl
   design), lint and build clean. `sf_rehearsal` DB = copy of production data (JSON backup `_db-backup-2026-09-27`).
   Now: 116 unit/integration tests, 28 e2e (+2 skipped), 3 offline e2e (`npm run test:offline`: production build,
   server stopped for real).
+
+## Shop, bar, pressing, car wash, other — to deploy
+
+- Every department type is now built. Two engines: **sales & stock** (shop, bar, other: till with search, USB
+  scanner and camera, credit, bar tabs, crates and deposits, purchases paid or on credit, average cost, counts and
+  losses) and **job tickets** (pressing, car wash, other's jobs: price list by garment / vehicle type, express,
+  tags, advances, collection, washers' commissions, loyalty, unclaimed items, WhatsApp "ready" message).
+  Informal businesses use it as is; a company in Full accounting / VAT gets invoices with NIU, RCCM and VAT, supplier
+  bills and the stock in its books (311 / 6031, deposits 4094 / 4194). As built: `docs/TRADE_AND_SERVICES_PLAN.md`.
+- **New migration (additive):** `20261120090000_trade_and_services` — `npx prisma migrate deploy`, push, resync
+  Inngest (four `trade-*` functions).
+- Full test run (7 Oct 2026, production build): lint and schema check clean; 375 unit/integration; every e2e spec
+  (each on a fresh server: the registration limit is 5 per hour per server) — accounting 3, all-pages 4,
+  boss-manages 6, boss-runs 2, event rental 6, executive stay 6, navigation 6 (+2 skipped by design), property 5,
+  restaurant day 8, **trade-and-services 7** (shop, bar, pressing, car wash through the screens, and every page of
+  the four types for the manager and the Boss with accessibility checks), undo-sale 4, venue 9; offline 4/4; load
+  test 360 people in 120 businesses (incl. 40 with a shop, bar, pressing, car wash and salon) on two servers:
+  3 397 requests, 0 errors; `npm run test:load:verify`: the books of 40 companies in Full accounting (20 of them
+  trading) equal their statements (160 department-months).
+- e2e specs that read whole pages were scoped to `main` (restaurant day), and the homepage now says every type is
+  available.
+
+## Full accounting release (SYSCOHADA) — to deploy
+
+- **Boss → companies → departments.** Every business gets one default company (Simple accounting, as today).
+  The Boss can add companies, move departments, and switch a company to **Full accounting (SYSCOHADA)**: books
+  written automatically from every record (journals, general ledger, trial balance, income statement, balance
+  sheet, cash-flow statement), manual entries with approval, closing month by month, opening balances,
+  allocation of the result, **accountants** (a third person type: Accounting only), **VAT** (return per month),
+  **supplier bills** paid later, customer and supplier **ageing**, bank / MoMo **reconciliation**.
+  As built: `docs/ACCOUNTING_PLAN.md` (last section).
+- **New migration (additive):** `20261110090000_accounting` — `npx prisma migrate deploy` from the owner's PC
+  (it also applies the property and event rental migrations if not applied), then push.
+- Inngest: resync (new functions `ledger-nightly-sync`, `ledger-department-sync`). Without `INNGEST_EVENT_KEY`
+  the books still update before any accounting page is read.
+- Full test run (7 Oct 2026, production build): lint and schema check clean; 354 unit/integration; every
+  e2e spec — navigation 6 (+2 skipped by design), undo-sale 4, boss-runs 2, all-pages 4, restaurant day 8,
+  boss-manages 6, venue 9, executive stay 6, event rental 6, property 5, accounting 3; offline 4/4
+  (`npm run test:offline`; its spec was updated for the stronger passwords and the first-sign-in password
+  change); load test 420 people in 140 businesses on two servers (venue, restaurant, guest house, event
+  rental, office rental, and the Boss reading the books of 40 companies in Full accounting): 3 827 requests
+  in 4 min, 0 errors; then `npm run test:load:verify`: the books of the 40 companies still equal their
+  statements for every month (1 087 entries).
 
 ## Property rental release (Place Étoilée & Main Building) — to deploy
 

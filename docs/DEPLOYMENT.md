@@ -126,6 +126,29 @@ Then deploy the application code.
 2. Push, then resync Inngest (four new property functions: alerts 06:50, daily 07:10, weekly Monday 07:40, monthly
    1st 07:45, Africa/Douala). Tenant reminders by e-mail need `RESEND_API_KEY` and `EMAIL_FROM`.
 
+## Full accounting release (`20261110090000_accounting`)
+
+1. `npx prisma migrate deploy` (additive: companies — one default company per business is created and every
+   department joined to it —, chart of accounts, journals, ledger, suppliers, bills, bank statements, three
+   columns on `transactions`, enum values `SUPPLIER_PAYMENT` and `ACCOUNTANT`, database triggers keeping the
+   ledger balanced and immutable). Every business stays in Simple accounting until the Boss switches.
+2. Push, then resync Inngest (`ledger-nightly-sync` 02:30, `ledger-department-sync` on records).
+
+## Shop, bar, pressing, car wash, other (`20261120090000_trade_and_services`)
+
+1. `npx prisma migrate deploy` (additive: products, stock movements, sale lines, tabs, purchases, crates and their
+   movements, price lists, washers, tickets; three columns on `transactions`). Existing data is untouched.
+2. Push, then resync Inngest (four new functions: `trade-morning-alerts` 06:55, `trade-daily-reports` 07:05,
+   `trade-weekly-reports` Monday 07:45, `trade-monthly-reports` 1st 07:50, Africa/Douala).
+3. The camera barcode reader needs HTTPS (production is) and the header `Permissions-Policy: camera=(self)`
+   (set in `next.config.mjs`). USB scanners need nothing.
+
+## Load test
+
+`npm run test:load:seed` (LOAD_ORGS, LOAD_STAY_ORGS, LOAD_RENTAL_ORGS, LOAD_PROPERTY_ORGS businesses on the
+disposable database), `npm run test:load` against running servers, then `npm run test:load:verify` (with
+LOAD_SEED): the books of the companies in Full accounting must still equal their statements.
+
 ## Rollback
 
 Migrations 1 and 3 change the schema (3 drops `Budget` and the recurring columns); 2 and 4 change data. To roll back, restore the
