@@ -15,6 +15,14 @@ import { formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BarcodeScanner } from "./barcode-scanner";
 
+/** What a product can be, by department type: sold from stock, a service, a raw material / input used. */
+const KINDS = {
+  SHOP: [["GOODS", "Goods (kept in stock)"], ["SERVICE", "Service (no stock)"]],
+  OTHER: [["GOODS", "Goods (kept in stock)"], ["SERVICE", "Service (no stock)"], ["RAW", "Material used (not sold)"]],
+  PRODUCTION: [["GOODS", "Product I make or sell"], ["RAW", "Raw material (used in recipes)"], ["SERVICE", "Service (no stock)"]],
+  FARM: [["GOODS", "Produce to sell (eggs, harvest …)"], ["RAW", "Input (feed, vaccines, seeds …)"]],
+};
+
 const decimal = (v) => String(v ?? "").replace(",", ".").replace(/[^0-9.]/g, "");
 
 /** Adds a product (with its opening count and cost) or changes one: name, barcode, prices, unit, low level, crate. */
@@ -37,7 +45,8 @@ export function ProductDialog({ departmentId, domain, product = null, categories
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF({ ...f, [k]: ["salePrice", "costPrice"].includes(k) ? wholeNumber(e.target.value) : ["openingQuantity", "lowStock"].includes(k) ? decimal(e.target.value) : e.target.value });
   const service = f.kind === "SERVICE";
-  const valid = f.name.trim() && f.salePrice !== "" && (!product || canPrice || Number(f.salePrice) === product.salePrice);
+  const raw = f.kind === "RAW";
+  const valid = f.name.trim() && (raw || f.salePrice !== "") && (!product || canPrice || Number(f.salePrice || 0) === product.salePrice);
   const submit = async () => {
     setBusy(true);
     const input = { ...(product ? { id: product.id } : {}), ...f, name: f.name.trim(), salePrice: Number(f.salePrice), lowStock: f.lowStock || 0, unitsPerPack: f.unitsPerPack || 1, packagingId: f.packagingId || null };
@@ -54,15 +63,15 @@ export function ProductDialog({ departmentId, domain, product = null, categories
     <FormDialog wide open onOpenChange={(v) => !v && onClose()} title={product ? `${product.name} · ${product.code}` : `Add a ${words.item.toLowerCase()}`} description={product ? "The stock changes with purchases, sales and counts (Stock page), not here." : "The quantity you have now and what one unit cost you start its stock."} footer={<SubmitButton busy={busy} disabled={!valid} onClick={submit}>{product ? "Save" : "Add"}</SubmitButton>}>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Name" required htmlFor="pr-n" className="sm:col-span-2"><input id="pr-n" className={inputClass} value={f.name} onChange={set("name")} placeholder={domain === "BAR" ? "33 Export 65 cl" : "Rice 5 kg"} /></Field>
-        {domain === "OTHER" || domain === "SHOP" ? (
-          <Field label="Kind" htmlFor="pr-k"><select id="pr-k" className={selectClass} value={f.kind} onChange={set("kind")} disabled={product && product.quantity > 0}><option value="GOODS">Goods (kept in stock)</option><option value="SERVICE">Service (no stock)</option></select></Field>
+        {KINDS[domain] ? (
+          <Field label="Kind" htmlFor="pr-k"><select id="pr-k" className={selectClass} value={f.kind} onChange={set("kind")} disabled={product && product.quantity > 0}>{KINDS[domain].map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         ) : <div />}
         <Field label="Barcode" htmlFor="pr-b" hint="Scan it with the USB scanner, or the camera">
           <div className="flex gap-2"><input id="pr-b" className={inputClass} value={f.barcode} onChange={set("barcode")} onKeyDown={(e) => e.key === "Enter" && e.preventDefault()} /><BarcodeScanner label="" onCode={(barcode) => setF((x) => ({ ...x, barcode }))} /></div>
         </Field>
         <Field label="Category" htmlFor="pr-c"><input id="pr-c" className={inputClass} list="pr-cats" value={f.category} onChange={set("category")} /><datalist id="pr-cats">{cats.map((c) => <option key={c} value={c} />)}</datalist></Field>
         <Field label="Sold by" htmlFor="pr-u"><input id="pr-u" className={inputClass} list="pr-units" value={f.unit} onChange={set("unit")} /><datalist id="pr-units">{PRODUCT_UNITS.map((u) => <option key={u} value={u} />)}</datalist></Field>
-        <Field label="Sale price (FCFA)" required htmlFor="pr-p" hint={product && !canPrice ? "Only someone with the right to change prices can change it." : undefined}><input id="pr-p" className={inputClass} inputMode="numeric" value={f.salePrice} onChange={set("salePrice")} disabled={product && !canPrice} /></Field>
+        <Field label={raw ? "Sale price (FCFA, if ever sold)" : "Sale price (FCFA)"} required={!raw} htmlFor="pr-p" hint={product && !canPrice ? "Only someone with the right to change prices can change it." : undefined}><input id="pr-p" className={inputClass} inputMode="numeric" value={f.salePrice} onChange={set("salePrice")} disabled={product && !canPrice} /></Field>
         {!product && !service ? (
           <>
             <Field label="Cost of one unit (FCFA)" htmlFor="pr-cp" hint="What you paid for it"><input id="pr-cp" className={inputClass} inputMode="numeric" value={f.costPrice} onChange={set("costPrice")} /></Field>
@@ -123,7 +132,7 @@ export function ProductBoard({ departmentId, domain, mode = "products", products
   const base = `/d/${departmentId}`;
   const stock = mode === "stock";
   const columns = [
-    { key: "n", label: words.item, render: (p) => <Link href={`${base}/products/${p.id}`} className="font-medium hover:underline">{p.name}</Link> },
+    { key: "n", label: words.item, render: (p) => <span><Link href={`${base}/products/${p.id}`} className="font-medium hover:underline">{p.name}</Link>{p.kind === "RAW" ? <Pill tone="amber" className="ml-1">{domain === "FARM" ? "input" : "material"}</Pill> : null}</span> },
     { key: "c", label: "Code", render: (p) => <span className="font-mono text-xs">{p.code}{p.barcode ? <span className="block text-slate-500">{p.barcode}</span> : null}</span> },
     { key: "cat", label: "Category", render: (p) => p.category || "—" },
     ...(stock

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Reports" };
 
 /** Reports for any period, by department type (lib/domains). */
-const PAGES = { EVENT_VENUE: VenueReportsPage, ROOM_RENTAL: StayReportsPage, MATERIAL_RENTAL: RentalReportsPage, PROPERTY_RENTAL: PropertyReportsPage, SHOP: TradeReportsPage, BAR: TradeReportsPage, PRESSING: TradeReportsPage, CAR_WASH: TradeReportsPage, OTHER: TradeReportsPage };
+const PAGES = { EVENT_VENUE: VenueReportsPage, ROOM_RENTAL: StayReportsPage, MATERIAL_RENTAL: RentalReportsPage, PROPERTY_RENTAL: PropertyReportsPage, SHOP: TradeReportsPage, BAR: TradeReportsPage, PRESSING: TradeReportsPage, CAR_WASH: TradeReportsPage, OTHER: TradeReportsPage, PRODUCTION: TradeReportsPage, FARM: TradeReportsPage, SALON: TradeReportsPage };
 
 export default async function ReportsPage({ params, searchParams }) {
   const { deptId } = await params;

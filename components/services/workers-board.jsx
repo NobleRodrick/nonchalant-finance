@@ -11,7 +11,7 @@ import { workerPaySpec, workerSpec } from "@/lib/trade/specs";
 import { formatDateKey } from "@/lib/timezone";
 import { formatMoney } from "@/lib/format";
 
-function WorkerDialog({ departmentId, worker, onClose }) {
+function WorkerDialog({ departmentId, worker, words, onClose }) {
   const record = useRecorder();
   const [f, setF] = useState({ name: worker?.name || "", phone: worker?.phone || "", isActive: worker ? worker.isActive : true });
   const [busy, setBusy] = useState(false);
@@ -22,7 +22,7 @@ function WorkerDialog({ departmentId, worker, onClose }) {
     if (out) onClose();
   };
   return (
-    <FormDialog open onOpenChange={(v) => !v && onClose()} title={worker ? worker.name : "Add a washer"} footer={<SubmitButton busy={busy} disabled={!f.name.trim()} onClick={submit}>Save</SubmitButton>}>
+    <FormDialog open onOpenChange={(v) => !v && onClose()} title={worker ? worker.name : `Add a ${words.worker.toLowerCase()}`} footer={<SubmitButton busy={busy} disabled={!f.name.trim()} onClick={submit}>Save</SubmitButton>}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name" required htmlFor="wk-n"><input id="wk-n" className={inputClass} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
         <Field label="Phone" htmlFor="wk-p"><input id="wk-p" className={inputClass} value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></Field>
@@ -50,23 +50,23 @@ function PayDialog({ departmentId, worker, onClose }) {
 }
 
 /** Washers: what each earned (collected washes), was paid and is owed; their work in the period; payouts. */
-export function WorkersBoard({ departmentId, workers, payouts, perms }) {
+export function WorkersBoard({ departmentId, workers, payouts, perms, words = { worker: "Washer", workers: "Washers" } }) {
   const [dialog, setDialog] = useState(null);
   return (
     <div className="space-y-5">
       <Section
-        title="Washers"
-        description="Commissions are earned when the wash is collected (paid or on credit), at the rate of the price list."
+        title={words.workers}
+        description="Commissions are earned when the work is collected (paid or on credit), at the rate of the price list."
         bodyClassName="p-0"
-        actions={perms.servicesManage ? <Button size="sm" onClick={() => setDialog({ kind: "edit", worker: null })}><UserPlus className="h-4 w-4" /> Add a washer</Button> : null}
+        actions={perms.servicesManage ? <Button size="sm" onClick={() => setDialog({ kind: "edit", worker: null })}><UserPlus className="h-4 w-4" /> Add a {words.worker.toLowerCase()}</Button> : null}
       >
         <DataTable
           rows={workers}
           rowClassName={(w) => (!w.isActive ? "opacity-60" : "")}
-          empty="No washer yet."
+          empty={`No ${words.worker.toLowerCase()} yet.`}
           columns={[
-            { key: "n", label: "Washer", render: (w) => <span className="font-medium">{w.name}{w.phone ? <span className="block text-xs font-normal text-slate-500">{w.phone}</span> : null}{!w.isActive ? <Pill className="ml-1">left</Pill> : null}</span> },
-            { key: "t", label: "Washes (period)", align: "right", render: (w) => w.period.tickets },
+            { key: "n", label: words.worker, render: (w) => <span className="font-medium">{w.name}{w.phone ? <span className="block text-xs font-normal text-slate-500">{w.phone}</span> : null}{!w.isActive ? <Pill className="ml-1">left</Pill> : null}</span> },
+            { key: "t", label: "Jobs (period)", align: "right", render: (w) => w.period.tickets },
             { key: "r", label: "Work done (period)", align: "right", render: (w) => <Money value={w.period.revenue} suffix={false} /> },
             { key: "c", label: "Earned (period)", align: "right", render: (w) => <Money value={w.period.commission} suffix={false} /> },
             { key: "e", label: "Earned (all)", align: "right", render: (w) => <Money value={w.earned} suffix={false} /> },
@@ -79,7 +79,7 @@ export function WorkersBoard({ departmentId, workers, payouts, perms }) {
       <Section title="Payouts of the period" bodyClassName="p-0">
         <DataTable dense rows={payouts} rowClassName={(p) => (p.voided ? "opacity-50 line-through" : "")} empty="No payout in this period." columns={[{ key: "r", label: "Reference", render: (p) => <span className="font-mono text-xs">{p.referenceNo}</span> }, { key: "d", label: "Date", render: (p) => formatDateKey(p.dateKey, { weekday: false }) }, { key: "w", label: "Washer", render: (p) => p.worker }, { key: "m", label: "How", render: (p) => METHOD_NAMES[p.method] || p.method }, { key: "a", label: "Amount", align: "right", render: (p) => <Money value={p.amount} suffix={false} /> }]} />
       </Section>
-      {dialog?.kind === "edit" ? <WorkerDialog departmentId={departmentId} worker={dialog.worker} onClose={() => setDialog(null)} /> : null}
+      {dialog?.kind === "edit" ? <WorkerDialog departmentId={departmentId} worker={dialog.worker} words={words} onClose={() => setDialog(null)} /> : null}
       {dialog?.kind === "pay" ? <PayDialog departmentId={departmentId} worker={dialog.worker} onClose={() => setDialog(null)} /> : null}
     </div>
   );

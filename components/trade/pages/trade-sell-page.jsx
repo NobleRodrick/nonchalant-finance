@@ -33,7 +33,7 @@ export async function TradeSellPage({ page, searchParams: sp }) {
         domain={department.domain}
         dateKey={isToday ? null : dateKey}
         locked={status.locked || !perms.sell}
-        products={serialize(products.filter((p) => p.isActive))}
+        products={serialize(products.filter((p) => p.isActive && p.kind !== "RAW"))}
         debtors={debtors}
         tabs={serialize(tabs)}
         sales={serialize(sales)}

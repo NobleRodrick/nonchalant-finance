@@ -10,7 +10,7 @@ import { checkLedger } from "../support/ledger-check";
  */
 describe.skipIf(!process.env.LOAD_SEED)("after the load test", () => {
   it("the books agree with the statements", async () => {
-    const { properties = [], trades = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED, "utf8"));
+    const { properties = [], trades = [], makers = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED, "utf8"));
     let compared = 0;
     for (const p of properties) {
       const boss = await db.user.findUnique({ where: { id: p.bossId } });
@@ -25,8 +25,15 @@ describe.skipIf(!process.env.LOAD_SEED)("after the load test", () => {
       const boss = await db.user.findUnique({ where: { id: t.bossId } });
       tradeCompared += (await checkLedger({ organizationId: t.orgId, boss, fromMonth: new Date().toISOString().slice(0, 7) })).compared.length;
     }
+    let makerCompared = 0;
+    for (const m of makers) {
+      const boss = await db.user.findUnique({ where: { id: m.bossId } });
+      makerCompared += (await checkLedger({ organizationId: m.orgId, boss, fromMonth: new Date().toISOString().slice(0, 7) })).compared.length;
+    }
+    expect(makerCompared).toBe(makers.length * 3);
+    tradeCompared += makerCompared;
     const entries = await db.journalEntry.count({ where: { status: "POSTED" } });
-    console.log(`${properties.length + fullTrades.length} companies, ${compared + tradeCompared} department-months compared, ${entries} posted entries`);
+    console.log(`${properties.length + fullTrades.length + makers.length} companies, ${compared + tradeCompared} department-months compared, ${entries} posted entries`);
     expect(tradeCompared).toBeGreaterThanOrEqual(fullTrades.length);
   });
 });

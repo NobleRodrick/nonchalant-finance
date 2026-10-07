@@ -7,7 +7,10 @@ room rental, material rental, office & property rental, shop or other. **Every t
 banquet hall, rooms / guest house, event & decoration rental, office & property rental, and — on two shared engines
 (`docs/TRADE_AND_SERVICES_PLAN.md`) — shop, bar (tabs, crates and deposits), other activity (sales & stock: till with
 search, USB scanner and phone camera, purchases paid or on credit, average cost) and pressing, car wash (job tickets:
-price list by garment / vehicle type, express, advances, washers' commissions, loyalty). Each business has one or more **companies**; each keeps **Simple** accounting or **Full accounting
+price list by garment / vehicle type, express, advances, washers' commissions, loyalty); production (bakery,
+workshop: raw materials, recipes, batches at their real cost), farm (poultry and livestock bands, crop fields, fish
+ponds: deaths, feed from stock, produce, profit per batch) and salon / spa / gym (appointments per staff member,
+memberships and session packs with check-ins). Each business has one or more **companies**; each keeps **Simple** accounting or **Full accounting
 (SYSCOHADA)**: automatic double-entry books, statements, closing, VAT, supplier bills, reconciliation and accountants
 (`docs/ACCOUNTING_PLAN.md`). Each type declares its pages in `lib/domains/<type>.js`; the sidebar lists every department and expands
 it into its pages, for the Boss and for a head of several departments.

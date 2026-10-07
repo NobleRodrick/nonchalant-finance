@@ -209,3 +209,23 @@ export async function setupTradeOrganization(label = "Trade") {
   const d = (n) => org.departments.find((x) => x.name === n);
   return { org, boss, shop: d("Shop"), bar: d("Bar"), pressing: d("Pressing"), carWash: d("Car wash"), other: d("Salon"), head: org.users.find((u) => u.email.startsWith(`thead-${tag}`)) };
 }
+
+/** A business with a bakery (production), a farm and a salon / gym, run by one head. */
+export async function setupMakersOrganization(label = "Makers") {
+  const tag = uid();
+  cookieJar.clear();
+  ok(await registerBoss({ name: `Boss ${tag}`, email: `mboss-${tag}@test.local`, password: "Baobab-2468" }));
+  const names = { PRODUCTION: "Bakery", FARM: "Farm", SALON: "Salon" };
+  ok(
+    await createOrganization({
+      name: `${label} ${tag}`,
+      departments: Object.entries(names).map(([domain, name]) => ({ name, domain })),
+      initialEmployees: [{ name: "Makers head", title: "Manager", email: `mhead-${tag}@test.local`, tempPassword: "Kola-24680", departmentNames: Object.values(names) }],
+    })
+  );
+  const boss = await db.user.findUnique({ where: { email: `mboss-${tag}@test.local` } });
+  await headsChoseTheirPasswords(boss.organizationId);
+  const org = await db.organization.findUnique({ where: { id: boss.organizationId }, include: { departments: true, users: true } });
+  const d = (n) => org.departments.find((x) => x.name === n);
+  return { org, boss, bakery: d("Bakery"), farm: d("Farm"), salon: d("Salon"), head: org.users.find((u) => u.email.startsWith(`mhead-${tag}`)) };
+}

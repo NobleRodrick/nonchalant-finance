@@ -1,4 +1,4 @@
-import { BedDouble, Building, Building2, Car, PartyPopper, Shirt, Store, Tent, UtensilsCrossed, Wine } from "lucide-react";
+import { BedDouble, Building, Building2, Car, Factory, PartyPopper, Scissors, Shirt, Sprout, Store, Tent, UtensilsCrossed, Wine } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Icon of each department type (lib/domains): one place for the sidebar, pickers and pages. */
@@ -12,6 +12,9 @@ export const DOMAIN_ICONS = {
   MATERIAL_RENTAL: Tent,
   PROPERTY_RENTAL: Building,
   SHOP: Store,
+  PRODUCTION: Factory,
+  FARM: Sprout,
+  SALON: Scissors,
   OTHER: Building2,
 };
 
@@ -26,6 +29,8 @@ const DARK_TONES = {
   orange: "bg-orange-500/15 text-orange-300",
   indigo: "bg-indigo-500/15 text-indigo-300",
   pink: "bg-pink-500/15 text-pink-300",
+  lime: "bg-lime-500/15 text-lime-300",
+  fuchsia: "bg-fuchsia-500/15 text-fuchsia-300",
   slate: "bg-slate-500/20 text-slate-300",
 };
 

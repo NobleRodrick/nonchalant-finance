@@ -128,7 +128,7 @@ function TradeFigures({ c }) {
   );
 }
 
-const FIGURES = { RESTAURANT: RestaurantFigures, EVENT_VENUE: VenueFigures, ROOM_RENTAL: RoomsFigures, MATERIAL_RENTAL: RentalFigures, PROPERTY_RENTAL: PropertyFigures, SHOP: TradeFigures, BAR: TradeFigures, PRESSING: TradeFigures, CAR_WASH: TradeFigures, OTHER: TradeFigures };
+const FIGURES = { RESTAURANT: RestaurantFigures, EVENT_VENUE: VenueFigures, ROOM_RENTAL: RoomsFigures, MATERIAL_RENTAL: RentalFigures, PROPERTY_RENTAL: PropertyFigures, SHOP: TradeFigures, BAR: TradeFigures, PRESSING: TradeFigures, CAR_WASH: TradeFigures, OTHER: TradeFigures, PRODUCTION: TradeFigures, FARM: TradeFigures, SALON: TradeFigures };
 
 /** The figures of a department card on the Boss overview, by department type (lib/domains). */
 export function CardFigures({ card }) {

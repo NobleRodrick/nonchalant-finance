@@ -48,6 +48,9 @@ SEARCHES.SHOP = TRADE_SEARCH;
 SEARCHES.BAR = TRADE_SEARCH;
 SEARCHES.PRESSING = SERVICE_SEARCH;
 SEARCHES.CAR_WASH = SERVICE_SEARCH;
+SEARCHES.PRODUCTION = TRADE_SEARCH;
+SEARCHES.FARM = TRADE_SEARCH;
+SEARCHES.SALON = SERVICE_SEARCH;
 SEARCHES.OTHER = { ...TRADE_SEARCH, run: bothSearch, groups: [["products", "Products & services"], ["tickets", "Jobs"], ["money", "Sales, payments and expenses"], ["purchases", "Purchases"], ["debts", "Customers on credit"], ["prices", "Job price list"]] };
 
 /** One search across the department (?q=): bookings, customers, items, money records, documents. */

@@ -40,7 +40,7 @@ describe("business days in Africa/Douala", () => {
 
 describe("department types and roles", () => {
   it("every department type is enabled; every type has a label and description", () => {
-    expect(DOMAIN_LIST.map((d) => d.key)).toEqual(["RESTAURANT", "EVENT_VENUE", "ROOM_RENTAL", "BAR", "PRESSING", "CAR_WASH", "MATERIAL_RENTAL", "PROPERTY_RENTAL", "SHOP", "OTHER"]);
+    expect(DOMAIN_LIST.map((d) => d.key)).toEqual(["RESTAURANT", "EVENT_VENUE", "ROOM_RENTAL", "BAR", "PRESSING", "CAR_WASH", "MATERIAL_RENTAL", "PROPERTY_RENTAL", "SHOP", "PRODUCTION", "FARM", "SALON", "OTHER"]);
     expect(DOMAIN_LIST.filter((d) => d.enabled).map((d) => d.key)).toEqual(DOMAIN_LIST.map((d) => d.key));
     expect(getDomain("PRESSING").label).toBe("Pressing (dress wash)");
     expect(DOMAIN_LIST.every((d) => d.description.length > 10)).toBe(true);

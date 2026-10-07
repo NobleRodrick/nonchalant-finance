@@ -22,10 +22,10 @@ import { cn } from "@/lib/utils";
 import { METHODS } from "@/components/kit/payment-fields";
 import { formatMoney as fm } from "@/lib/format";
 
-/** The record a money entry belongs to, from the link select ("order:<id>", "unit:<id>", "building:<id>"). */
+/** The record a money entry belongs to, from the link select ("order:<id>", "unit:<id>", "building:<id>", "batch:<id>"). */
 function linkInput(value) {
   const [k, id] = String(value || "").split(":");
-  return { rentalOrderId: k === "order" ? id : null, propertyUnitId: k === "unit" ? id : null, buildingId: k === "building" ? id : null };
+  return { rentalOrderId: k === "order" ? id : null, propertyUnitId: k === "unit" ? id : null, buildingId: k === "building" ? id : null, ...(k === "batch" ? { farmBatchId: id } : {}) };
 }
 
 function moneySpecOf(departmentId, f, type, categoryLabel, linkLabel, files) {

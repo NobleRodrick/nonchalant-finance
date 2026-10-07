@@ -14,8 +14,11 @@ const SH = ["SHOP"];
 const BA = ["BAR"];
 const PS = ["PRESSING"];
 const CW = ["CAR_WASH"];
-const TR = ["SHOP", "BAR", "OTHER"];
-const SV = ["PRESSING", "CAR_WASH", "OTHER"];
+const PD = ["PRODUCTION"];
+const FM = ["FARM"];
+const SL = ["SALON"];
+const TR = ["SHOP", "BAR", "OTHER", "PRODUCTION", "FARM"];
+const SV = ["PRESSING", "CAR_WASH", "OTHER", "SALON"];
 
 export const MONEY_CATEGORIES = {
   RENT_INCOME: [
@@ -40,6 +43,11 @@ export const MONEY_CATEGORIES = {
     { id: "bar-entry-fees", label: "Entry fees (concert, match screening)", domains: BA, operationCategory: "OTHER_INCOME" },
     { id: "pressing-alterations", label: "Alterations and repairs of garments", domains: PS, operationCategory: "OTHER_INCOME" },
     { id: "carwash-products", label: "Car products sold (air fresheners, wipers …)", domains: CW, operationCategory: "OTHER_INCOME" },
+    { id: "production-custom-orders", label: "Custom orders and services (catering, tailoring work)", domains: PD, operationCategory: "OTHER_INCOME" },
+    { id: "farm-manure", label: "Manure, by-products and services (ploughing, transport)", domains: FM, operationCategory: "OTHER_INCOME" },
+    { id: "farm-subsidy", label: "Subsidies and grants", domains: FM, operationCategory: "OTHER_INCOME" },
+    { id: "salon-products", label: "Beauty / sport products sold", domains: SL, operationCategory: "OTHER_INCOME" },
+    { id: "salon-day-pass", label: "Day pass / drop-in session (without membership)", domains: SL, operationCategory: "OTHER_INCOME" },
     { id: "income-other", label: "Other income", operationCategory: "OTHER_INCOME" },
   ],
   DISCOUNT: [
@@ -50,6 +58,8 @@ export const MONEY_CATEGORIES = {
   PURCHASE: [
     { id: "purchase-goods", label: "Goods for resale (from Purchases)", domains: TR, operationCategory: "PURCHASE_STOCK", internal: true },
     { id: "purchase-drinks", label: "Drinks for resale (from Purchases)", domains: BA, operationCategory: "PURCHASE_DRINK", internal: true },
+    { id: "purchase-raw", label: "Raw materials (from Purchases)", domains: PD, operationCategory: "PURCHASE_STOCK", internal: true },
+    { id: "purchase-farm-inputs", label: "Farm inputs (from Purchases)", domains: FM, operationCategory: "PURCHASE_STOCK", internal: true },
     { id: "purchase-food", label: "Food ingredients", operationCategory: "PURCHASE_FOOD" },
     { id: "purchase-ready", label: "Ready-made dishes", operationCategory: "PURCHASE_STOCK" },
     { id: "purchase-supplies", label: "Kitchen supplies", operationCategory: "PURCHASE_SUPPLIES" },
@@ -91,6 +101,20 @@ export const MONEY_CATEGORIES = {
     { id: "carwash-equipment", label: "Pressure washer & vacuum repairs", domains: CW, operationCategory: "OPEX_MAINTENANCE" },
     { id: "carwash-commission", label: "Washers' commissions (from Washers)", domains: CW, operationCategory: "OPEX_SALARIES", internal: true },
     { id: "trade-shrinkage", label: "Goods given away or used by the business", domains: TR, operationCategory: "OPEX_OTHER" },
+    { id: "production-energy", label: "Oven / machine energy (firewood, gas, fuel)", domains: PD, operationCategory: "OPEX_UTILITIES" },
+    { id: "production-packaging", label: "Packaging (bags, bottles, labels)", domains: PD, operationCategory: "PURCHASE_SUPPLIES" },
+    { id: "production-machines", label: "Machine and tool repairs", domains: PD, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "production-labour", label: "Production workers (daily pay)", domains: PD, operationCategory: "OPEX_SALARIES" },
+    { id: "farm-young-animals", label: "Chicks, piglets, fingerlings, young animals", domains: FM, operationCategory: "PURCHASE_STOCK" },
+    { id: "farm-feed", label: "Feed bought and used at once", domains: FM, operationCategory: "PURCHASE_FOOD" },
+    { id: "farm-vet", label: "Vet visits, vaccines and medicine bought for use", domains: FM, operationCategory: "PURCHASE_SUPPLIES" },
+    { id: "farm-seeds", label: "Seeds, fertiliser and pesticide bought for use", domains: FM, operationCategory: "PURCHASE_SUPPLIES" },
+    { id: "farm-labour", label: "Farm workers (daily pay)", domains: FM, operationCategory: "OPEX_SALARIES" },
+    { id: "farm-energy", label: "Fuel, generator, water pumping", domains: FM, operationCategory: "OPEX_UTILITIES" },
+    { id: "farm-equipment", label: "Equipment, cages, nets and repairs", domains: FM, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "salon-supplies", label: "Hair, beauty and cleaning products used", domains: SL, operationCategory: "PURCHASE_SUPPLIES" },
+    { id: "salon-equipment", label: "Equipment repairs (dryers, machines, gym equipment)", domains: SL, operationCategory: "OPEX_MAINTENANCE" },
+    { id: "salon-staff", label: "Staff pay and commissions", domains: SL, operationCategory: "OPEX_SALARIES" },
     { id: "opex-gas", domains: R, label: "Cooking gas / charcoal", operationCategory: "OPEX_UTILITIES" },
     { id: "opex-electricity", label: "Electricity", operationCategory: "OPEX_UTILITIES" },
     { id: "opex-water", label: "Water", operationCategory: "OPEX_UTILITIES" },
@@ -157,6 +181,9 @@ export function categoryLabel(id) {
   if (id === "sale-goods") return "Sale";
   if (id === "sale-drinks") return "Sale (drinks)";
   if (id === "sale-other") return "Sale";
+  if (id === "sale-production") return "Sale";
+  if (id === "sale-farm") return "Sale (farm)";
+  if (id === "membership-sale") return "Membership sold";
   if (id === "ticket-payment") return "Ticket payment";
   if (id === "ticket-refund") return "Ticket refund";
   if (id === "packaging-deposit") return "Deposit on bottles / crates received";

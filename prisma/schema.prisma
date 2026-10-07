@@ -120,6 +120,13 @@ model Department {
   serviceItems       ServiceItem[]
   serviceTickets     ServiceTicket[]
   serviceWorkers     ServiceWorker[]
+  productionRecipes  ProductionRecipe[]
+  productionBatches  ProductionBatch[]
+  farmBatches        FarmBatch[]
+  farmEvents         FarmEvent[]
+  appointments       Appointment[]
+  membershipPlans    MembershipPlan[]
+  salonMemberships   Membership[]
   // Ledger kept up to date from this department's records (lib/accounting/sync.js).
   ledgerDirtyAt      DateTime?
   ledgerSyncedAt     DateTime?
@@ -235,6 +242,9 @@ enum DepartmentDomain {
   PROPERTY_RENTAL
   SHOP
   OTHER
+  PRODUCTION
+  FARM
+  SALON
 }
 
 model RefreshToken {
@@ -369,6 +379,10 @@ model Transaction {
   serviceTicket     ServiceTicket?     @relation(fields: [serviceTicketId], references: [id], onDelete: SetNull)
   serviceWorkerId   String? // car wash: the washer a commission payout goes to
   serviceWorker     ServiceWorker?     @relation(fields: [serviceWorkerId], references: [id], onDelete: SetNull)
+  farmBatchId       String? // farm: the batch (band, field, pond) a sale or an expense belongs to
+  farmBatch         FarmBatch?         @relation(fields: [farmBatchId], references: [id], onDelete: SetNull)
+  membershipId      String? // salon / gym: the membership this sale is
+  membership        Membership?        @relation(fields: [membershipId], references: [id], onDelete: SetNull)
   tradeLines        TradeSaleLine[]
   tradeTab          TradeTab?
   packagingMoves    PackagingMovement[]
@@ -383,6 +397,8 @@ model Transaction {
   @@index([departmentId, type, date])
   @@index([userId])
   @@index([accountId])
+  @@index([farmBatchId])
+  @@index([membershipId])
   @@index([date])
   @@index([bookingId])
   @@index([stayId])
@@ -1127,6 +1143,8 @@ model VenueClient {
   rentalOrders   RentalOrder[]
   propertyLeases PropertyLease[]
   serviceTickets ServiceTicket[]
+  appointments   Appointment[]
+  salonMemberships Membership[]
   identification String? // tenants: ID card, passport or company registration (as given)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -2683,6 +2701,7 @@ model StatementLine {
 enum TradeProductKind {
   GOODS // kept in stock
   SERVICE // sold without stock (a service, a fee)
+  RAW // raw material or input (production, farm): bought and used, not sold at the till
 }
 
 enum TradeMovementKind {
@@ -2693,6 +2712,8 @@ enum TradeMovementKind {
   COUNT // a physical count corrected the stock (signed)
   LOSS // broken, expired, stolen, given away
   PURCHASE_VOID // a purchase recorded by mistake leaves the stock again
+  PRODUCTION_OUT // raw materials used by a production batch, or inputs used on a farm batch
+  PRODUCTION_IN // finished goods of a production batch, or farm produce (eggs, harvest) into stock
 }
 
 enum TradeTabStatus {
@@ -2758,12 +2779,15 @@ model TradeMovement {
   transactionId String? // the sale
   tabLineId     String?
   purchaseId    String?
+  productionBatchId String? // production: the batch that used or made it
+  farmEventId   String? // farm: the feeding, treatment or harvest that used or produced it
   note          String?
   createdById   String
   createdAt     DateTime          @default(now())
 
   @@index([departmentId, date])
   @@index([productId, date])
+  @@index([productionBatchId])
   @@index([transactionId])
   @@map("trade_movements")
 }
@@ -2949,6 +2973,7 @@ model ServiceItem {
 }
 
 model ServiceWorker {
+  appointments Appointment[]
   id           String              @id @default(uuid())
   departmentId String
   department   Department          @relation(fields: [departmentId], references: [id], onDelete: Cascade)
@@ -3028,3 +3053,232 @@ model ServiceTicketLine {
   @@map("service_ticket_lines")
 }
 
+
+// ─── Production, farm, salon / spa / gym (docs/TRADE_AND_SERVICES_PLAN.md, phase 2) ─────────────
+// Production: a recipe turns raw materials into a finished product; a batch uses the raw materials
+// (at their average cost) and puts the finished goods in stock at the real cost of the batch.
+
+model ProductionRecipe {
+  id            String                 @id @default(uuid())
+  departmentId  String
+  department    Department             @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  productId     String                 @unique // the finished product
+  yieldQuantity Float // units of the product one recipe makes (e.g. 120 loaves)
+  note          String?
+  lines         ProductionRecipeLine[]
+  batches       ProductionBatch[]
+  updatedAt     DateTime               @updatedAt
+  createdAt     DateTime               @default(now())
+
+  @@index([departmentId])
+  @@map("production_recipes")
+}
+
+model ProductionRecipeLine {
+  id         String           @id @default(uuid())
+  recipeId   String
+  recipe     ProductionRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  materialId String // a raw material (or any stocked product) of the department
+  quantity   Float // used for one recipe
+  position   Int              @default(0)
+
+  @@index([recipeId])
+  @@map("production_recipe_lines")
+}
+
+model ProductionBatch {
+  id               String            @id @default(uuid())
+  departmentId     String
+  department       Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo      String // "PB-0001"
+  productId        String
+  recipeId         String?
+  recipe           ProductionRecipe? @relation(fields: [recipeId], references: [id], onDelete: SetNull)
+  plannedQuantity  Float // what the materials used should make
+  producedQuantity Float // what was really made (good units)
+  totalCost        Int // value of the materials used
+  unitCost         Int
+  date             DateTime
+  status           String            @default("RECORDED") // RECORDED | VOIDED
+  voidReason       String?
+  note             String?
+  createdById      String
+  createdAt        DateTime          @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, date])
+  @@map("production_batches")
+}
+
+enum FarmBatchKind {
+  POULTRY
+  LIVESTOCK
+  CROP
+  FISH
+}
+
+enum FarmEventKind {
+  ADDITION // more animals or fish put in
+  MORTALITY // deaths (or plants lost)
+  FEED // feed given (from stock or bought for it)
+  TREATMENT // vaccine, medicine, fertiliser, pesticide
+  WEIGHT // average weight measured
+  PRODUCE // eggs, milk, harvest, fish caught (into stock when a product is named)
+  SALE // animals or produce sold from the batch
+  NOTE
+}
+
+/// A batch of a farm: a band of chickens or pigs, a field and its season, a fish pond's cycle.
+model FarmBatch {
+  id              String        @id @default(uuid())
+  organizationId  String
+  departmentId    String
+  department      Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo     String // "FB-0001"
+  kind            FarmBatchKind
+  name            String // "Broilers house 2 – October", "Maize field A – season 1"
+  location        String? // house, field, pond
+  breed           String? // breed, crop, species
+  unit            String // birds, heads, fish, m², ha
+  initialCount    Float // animals or fish put in; area for a field
+  startDate       DateTime
+  expectedEndDate DateTime?
+  status          String        @default("ACTIVE") // ACTIVE | CLOSED
+  closedAt        DateTime?
+  closeNote       String?
+  note            String?
+  createdById     String
+  events          FarmEvent[]
+  records         Transaction[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, status])
+  @@map("farm_batches")
+}
+
+model FarmEvent {
+  id            String        @id @default(uuid())
+  batchId       String
+  batch         FarmBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  kind          FarmEventKind
+  date          DateTime
+  quantity      Float         @default(0) // animals, kg, bags, trays …
+  unit          String?
+  productId     String? // the input used from stock, or the product the produce went into
+  value         Int           @default(0) // cost of the input used (at average cost)
+  transactionId String? // the sale
+  note          String?
+  createdById   String
+  voidedAt      DateTime?
+  voidReason    String?
+  createdAt     DateTime      @default(now())
+
+  @@index([batchId, date])
+  @@index([departmentId, date])
+  @@map("farm_events")
+}
+
+enum AppointmentStatus {
+  BOOKED
+  ARRIVED // served: a visit ticket was opened
+  NO_SHOW
+  CANCELLED
+}
+
+/// Salon / spa / gym: a customer booked with a staff member for a time.
+model Appointment {
+  id             String            @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo    String // "AP-0001"
+  clientId       String?
+  client         VenueClient?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  customerName   String
+  customerPhone  String?
+  itemId         String? // the service booked (price list)
+  serviceLabel   String?
+  workerId       String?
+  worker         ServiceWorker?    @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  startAt        DateTime
+  minutes        Int               @default(60)
+  status         AppointmentStatus @default(BOOKED)
+  ticketId       String?           @unique // the visit opened when the customer arrived
+  cancelReason   String?
+  note           String?
+  createdById    String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, startAt])
+  @@index([workerId, startAt])
+  @@map("appointments")
+}
+
+enum MembershipPlanKind {
+  PERIOD // unlimited visits for a number of days (monthly gym)
+  SESSIONS // a number of sessions (10-session pack), optionally with a validity
+}
+
+model MembershipPlan {
+  id           String             @id @default(uuid())
+  departmentId String
+  department   Department         @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name         String
+  kind         MembershipPlanKind
+  days         Int? // validity in days
+  sessions     Int? // sessions included (SESSIONS)
+  price        Int
+  isActive     Boolean            @default(true)
+  memberships  Membership[]
+  createdAt    DateTime           @default(now())
+
+  @@unique([departmentId, name])
+  @@map("membership_plans")
+}
+
+model Membership {
+  id             String            @id @default(uuid())
+  organizationId String
+  departmentId   String
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  referenceNo    String // "MB-0001"
+  planId         String
+  plan           MembershipPlan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+  clientId       String?
+  client         VenueClient?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  customerName   String
+  customerPhone  String?
+  startDate      DateTime          @db.Date
+  endDate        DateTime?         @db.Date
+  sessionsTotal  Int?
+  price          Int
+  status         String            @default("ACTIVE") // ACTIVE | CANCELLED
+  cancelReason   String?
+  createdById    String
+  visits         MembershipVisit[]
+  records        Transaction[]
+  createdAt      DateTime          @default(now())
+
+  @@unique([departmentId, referenceNo])
+  @@index([departmentId, status])
+  @@map("memberships")
+}
+
+model MembershipVisit {
+  id           String     @id @default(uuid())
+  membershipId String
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  date         DateTime
+  note         String?
+  createdById  String
+  voidedAt     DateTime?
+
+  @@index([membershipId, date])
+  @@map("membership_visits")
+}

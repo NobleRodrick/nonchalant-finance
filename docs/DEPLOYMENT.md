@@ -134,6 +134,13 @@ Then deploy the application code.
    ledger balanced and immutable). Every business stays in Simple accounting until the Boss switches.
 2. Push, then resync Inngest (`ledger-nightly-sync` 02:30, `ledger-department-sync` on records).
 
+## Production, farm, salon / spa / gym (`20261201090000_production_farm_salon`)
+
+1. `npx prisma migrate deploy` (additive: three department types, raw materials, recipes, production batches,
+   farm batches and events, appointments, membership plans, memberships, check-ins; two columns on
+   `transactions`). It also applies `20261120090000_trade_and_services` when that one is not applied yet.
+2. Push. No new Inngest function: the `trade-*` alerts and reports cover the three new types.
+
 ## Shop, bar, pressing, car wash, other (`20261120090000_trade_and_services`)
 
 1. `npx prisma migrate deploy` (additive: products, stock movements, sale lines, tabs, purchases, crates and their

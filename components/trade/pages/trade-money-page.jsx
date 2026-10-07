@@ -35,8 +35,9 @@ export async function TradeMoneyPage({ page, searchParams: sp }) {
     ...(sp?.ref ? { referenceNo: String(sp.ref).slice(0, 40) } : sp?.pending ? { type: { in: ["EXPENSE", "OTHER_EXPENSE"] }, validatedAt: null, status: { not: "VOIDED" } } : { date: { gte: start, lte: end } }),
     ...(kind === "in" ? { type: { in: IN }, OR: NOT_DEPOSIT } : kind === "out" ? { type: { in: ["BOOKING_REFUND", "EXPENSE", "OTHER_EXPENSE"] }, OR: NOT_DEPOSIT } : kind === "purchases" ? { type: { in: ["PURCHASE", "SUPPLIER_PAYMENT"] } } : kind === "deposits" ? { category: { in: DEPOSITS } } : {}),
   };
+  const batches = department.domain === "FARM" ? await db.farmBatch.findMany({ where: { departmentId: department.id }, orderBy: [{ status: "asc" }, { startDate: "desc" }], select: { id: true, name: true, status: true }, take: 200 }) : [];
   const [transactions, pendingCount] = await Promise.all([
-    db.transaction.findMany({ where, include: { user: { select: { id: true, name: true } }, validatedBy: { select: { name: true } }, serviceTicket: { select: { id: true, referenceNo: true } } }, orderBy: { date: "desc" }, take: 2000 }),
+    db.transaction.findMany({ where: { ...where, ...(sp?.place ? { farmBatchId: String(sp.place) } : {}) }, include: { user: { select: { id: true, name: true } }, validatedBy: { select: { name: true } }, serviceTicket: { select: { id: true, referenceNo: true } }, farmBatch: { select: { id: true, name: true } } }, orderBy: { date: "desc" }, take: 2000 }),
     db.transaction.count({ where: { departmentId: department.id, type: { in: ["EXPENSE", "OTHER_EXPENSE"] }, validatedAt: null, status: { not: "VOIDED" } } }),
   ]);
   const files = transactions.length ? await db.attachment.findMany({ where: { entityType: "Transaction", entityId: { in: transactions.map((t) => t.id) } }, select: { id: true, entityId: true, fileName: true } }) : [];
@@ -57,7 +58,7 @@ export async function TradeMoneyPage({ page, searchParams: sp }) {
     description: t.description,
     counterparty: t.counterparty || t.customerName,
     reference: t.reference,
-    link: t.serviceTicket ? { label: t.serviceTicket.referenceNo, href: `${base}/tickets/${t.serviceTicket.id}` } : t.type === "SALE" ? { label: "Receipt", href: `${base}/money/receipt/${t.id}` } : null,
+    link: t.serviceTicket ? { label: t.serviceTicket.referenceNo, href: `${base}/tickets/${t.serviceTicket.id}` } : t.farmBatch ? { label: t.farmBatch.name, href: `${base}/batches/${t.farmBatch.id}` } : t.type === "SALE" ? { label: "Receipt", href: `${base}/money/receipt/${t.id}` } : null,
     recordedBy: t.user?.name,
     recordedById: t.user?.id,
     spentBy: t.receivedByName,
@@ -103,6 +104,7 @@ export async function TradeMoneyPage({ page, searchParams: sp }) {
         labels={{ customers: sells ? "Sales and payments" : "From customers", investments: sells ? "Goods bought" : "Bought", investmentsHint: sells ? "purchases paid and suppliers' bills" : "purchases" }}
         kinds={[{ value: "", label: "Everything" }, { value: "in", label: "Money in" }, { value: "out", label: "Expenses and refunds" }, ...(sells ? [{ value: "purchases", label: "Purchases and suppliers" }] : []), ...(department.domain === "BAR" ? [{ value: "deposits", label: "Crate deposits" }] : [])]}
         categories={categories}
+        {...(department.domain === "FARM" ? { link: { label: "Batch / field", none: "The whole farm", every: "Every batch", filter: "place", hint: "Its cost goes to that batch's profit.", options: batches.map((b) => ({ value: `batch:${b.id}`, label: `${b.name}${b.status === "CLOSED" ? " (closed)" : ""}` })) } } : {})}
       />
     </div>
   );

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Money in / out" };
 
 /** Money in / out, by department type (lib/domains). */
-const PAGES = { RESTAURANT: RestaurantMoneyPage, EVENT_VENUE: VenueMoneyPage, ROOM_RENTAL: StayMoneyPage, MATERIAL_RENTAL: RentalMoneyPage, PROPERTY_RENTAL: PropertyMoneyPage, SHOP: TradeMoneyPage, BAR: TradeMoneyPage, PRESSING: TradeMoneyPage, CAR_WASH: TradeMoneyPage, OTHER: TradeMoneyPage };
+const PAGES = { RESTAURANT: RestaurantMoneyPage, EVENT_VENUE: VenueMoneyPage, ROOM_RENTAL: StayMoneyPage, MATERIAL_RENTAL: RentalMoneyPage, PROPERTY_RENTAL: PropertyMoneyPage, SHOP: TradeMoneyPage, BAR: TradeMoneyPage, PRESSING: TradeMoneyPage, CAR_WASH: TradeMoneyPage, OTHER: TradeMoneyPage, PRODUCTION: TradeMoneyPage, FARM: TradeMoneyPage, SALON: TradeMoneyPage };
 
 export default async function MoneyPage({ params, searchParams }) {
   const { deptId } = await params;

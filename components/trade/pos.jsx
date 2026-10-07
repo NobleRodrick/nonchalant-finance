@@ -133,11 +133,14 @@ export function TradePOS({ departmentId, domain, dateKey, locked, products, debt
   const onSearchKey = (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (byCode(q)) setQ("");
-    else if (shown.length === 1) {
-      add(shown[0]);
-      setQ("");
-    }
+    const c = q.trim();
+    if (!c) return;
+    // A scanner types the code and Enter; a name that matches one product adds it too.
+    const exact = products.find((x) => x.barcode === c || x.code.toLowerCase() === c.toLowerCase());
+    if (exact) add(exact);
+    else if (shown.length === 1) add(shown[0]);
+    else return void toast.error(shown.length ? "Several products match: tap the right one." : `No product with the code ${c}.`);
+    setQ("");
   };
   const setLine = (i, patch) => setCart((c) => c.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const reset = () => {

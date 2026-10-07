@@ -57,6 +57,15 @@ Where the Springer Finance work stands, so the next session can continue directl
   Now: 116 unit/integration tests, 28 e2e (+2 skipped), 3 offline e2e (`npm run test:offline`: production build,
   server stopped for real).
 
+## Production, farm, salon / spa / gym — to deploy
+
+- Three more types (13 in all): **production** (bakery, workshop: raw materials, recipes, batches at their real
+  cost with waste), **farm** (poultry / livestock bands, crop fields, fish ponds: deaths, feed from stock, eggs and
+  harvest into stock, sales from a batch, profit per batch), **salon, spa or gym** (appointments per staff member
+  opening visits, membership plans by days or sessions, check-ins, renewals). As built:
+  `docs/TRADE_AND_SERVICES_PLAN.md` (Phase 2).
+- **New migration (additive):** `20261201090000_production_farm_salon` — `npx prisma migrate deploy`, then push.
+
 ## Shop, bar, pressing, car wash, other — to deploy
 
 - Every department type is now built. Two engines: **sales & stock** (shop, bar, other: till with search, USB

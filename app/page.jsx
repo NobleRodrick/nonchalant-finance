@@ -112,7 +112,8 @@ export default async function Home() {
           <h2 className="text-center text-2xl font-bold sm:text-3xl">One business, many kinds of departments</h2>
           <p className="mx-auto mt-2 max-w-2xl text-center text-slate-600">
             Each department has a type, which gives it the right screens, stock and reports: restaurant, event venue,
-            guest house, event rental, office rental, shop, bar, pressing, car wash, or any other activity. A small
+            guest house, event rental, office rental, shop, bar, pressing, car wash, production workshop, farm,
+            salon or gym, or any other activity. A small
             informal business uses it as it is; a registered company adds full SYSCOHADA accounting and VAT.
           </p>
           <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

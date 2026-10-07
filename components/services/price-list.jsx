@@ -12,7 +12,7 @@ import { serviceArchiveSpec, serviceItemSpec, serviceSettingsSpec } from "@/lib/
 
 const COMMISSIONS = [["NONE", "No commission"], ["PERCENT", "% of the price"], ["FIXED", "Fixed amount per unit"]];
 
-function ItemDialog({ departmentId, item, variants, variantsLabel, canPrice, showCommission, onClose }) {
+function ItemDialog({ departmentId, item, variants, variantsLabel, canPrice, showCommission, workerWord = "Washer", onClose }) {
   const record = useRecorder();
   const [f, setF] = useState(() => ({ name: item?.name || "", category: item?.category || "", basePrice: item?.basePrice ? String(item.basePrice) : "", unit: item?.unit || "", commissionType: item?.commissionType || "NONE", commissionValue: item?.commissionValue ? String(item.commissionValue) : "", minutes: item?.minutes ? String(item.minutes) : "", sortOrder: item?.sortOrder ? String(item.sortOrder) : "" }));
   const [prices, setPrices] = useState(() => Object.fromEntries(variants.map((v) => [v, item?.prices?.[v] !== undefined ? String(item.prices[v]) : ""])));
@@ -42,7 +42,7 @@ function ItemDialog({ departmentId, item, variants, variantsLabel, canPrice, sho
       ) : null}
       {showCommission ? (
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Washer's commission" htmlFor="si-ct"><select id="si-ct" className={selectClass} value={f.commissionType} onChange={set("commissionType")}>{COMMISSIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+          <Field label={`${workerWord}'s commission`} htmlFor="si-ct"><select id="si-ct" className={selectClass} value={f.commissionType} onChange={set("commissionType")}>{COMMISSIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
           {f.commissionType !== "NONE" ? <Field label={f.commissionType === "PERCENT" ? "Percent" : "FCFA per unit"} htmlFor="si-cv"><input id="si-cv" className={inputClass} inputMode="numeric" value={f.commissionValue} onChange={set("commissionValue")} /></Field> : null}
           <Field label="Usual time (minutes)" htmlFor="si-m"><input id="si-m" className={inputClass} inputMode="numeric" value={f.minutes} onChange={set("minutes")} /></Field>
         </div>
@@ -103,11 +103,11 @@ export function PriceList({ departmentId, domain, items, settings, variantsLabel
           { key: "n", label: "Service", render: (i) => <span className="font-medium">{i.name}{i.category ? <span className="block text-xs font-normal text-slate-500">{i.category}</span> : null}</span> },
           { key: "b", label: "Usual", align: "right", render: (i) => (i.basePrice ? <Money value={i.basePrice} suffix={false} /> : "—") },
           ...shownVariants.map((v) => ({ key: `v-${v}`, label: v, align: "right", render: (i) => (i.prices[v] !== undefined ? <Money value={i.prices[v]} suffix={false} /> : <span className="text-slate-400">{i.basePrice || "—"}</span>) })),
-          ...(carWash ? [{ key: "c", label: "Commission", align: "right", render: (i) => (i.commissionType === "PERCENT" ? `${i.commissionValue} %` : i.commissionType === "FIXED" ? <Money value={i.commissionValue} suffix={false} /> : "—") }] : []),
+          ...(carWash || domain === "SALON" ? [{ key: "c", label: "Commission", align: "right", render: (i) => (i.commissionType === "PERCENT" ? `${i.commissionValue} %` : i.commissionType === "FIXED" ? <Money value={i.commissionValue} suffix={false} /> : "—") }] : []),
           { key: "x", label: "", render: (i) => <div className="flex justify-end gap-1">{perms.servicesManage ? <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: "item", item: i })} aria-label={`Edit ${i.name}`}><Pencil className="h-4 w-4" /></Button> : null}{perms.archive ? (i.isActive ? <Button size="sm" variant="ghost" aria-label={`Archive ${i.name}`} onClick={() => record(serviceArchiveSpec(departmentId, i), { success: `${i.name} archived.` })}><Archive className="h-4 w-4" /></Button> : <Button size="sm" variant="ghost" aria-label={`Restore ${i.name}`} onClick={() => record(serviceArchiveSpec(departmentId, i, true), { success: `${i.name} restored.` })}><RotateCcw className="h-4 w-4" /></Button>) : null}</div> },
         ]}
       />
-      {dialog?.kind === "item" ? <ItemDialog departmentId={departmentId} item={dialog.item} variants={variants} variantsLabel={variantsLabel} canPrice={perms.prices} showCommission={carWash} onClose={() => setDialog(null)} /> : null}
+      {dialog?.kind === "item" ? <ItemDialog departmentId={departmentId} item={dialog.item} variants={variants} variantsLabel={variantsLabel} canPrice={perms.prices} showCommission={carWash || domain === "SALON"} workerWord={domain === "SALON" ? "Staff" : "Washer"} onClose={() => setDialog(null)} /> : null}
       {dialog?.kind === "settings" ? <SettingsDialog departmentId={departmentId} settings={settings} variantsLabel={variantsLabel} carWash={carWash} onClose={() => setDialog(null)} /> : null}
     </Section>
   );

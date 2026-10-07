@@ -9,11 +9,14 @@ import { PropertyHome } from "@/components/property/property-home";
 import { TradeHome } from "@/components/trade/trade-home";
 import { OtherHome } from "@/components/trade/other-home";
 import { ServiceHome } from "@/components/services/service-home";
+import { ProductionHome } from "@/components/production/production-home";
+import { FarmHome } from "@/components/farm/farm-home";
+import { SalonHome } from "@/components/salon/salon-home";
 
 export const dynamic = "force-dynamic";
 
 /** The home page of each department type (lib/domains). */
-const HOMES = { RESTAURANT: RestaurantHome, EVENT_VENUE: VenueHome, ROOM_RENTAL: RoomsHome, MATERIAL_RENTAL: RentalHome, PROPERTY_RENTAL: PropertyHome, SHOP: TradeHome, BAR: TradeHome, PRESSING: ServiceHome, CAR_WASH: ServiceHome, OTHER: OtherHome };
+const HOMES = { RESTAURANT: RestaurantHome, EVENT_VENUE: VenueHome, ROOM_RENTAL: RoomsHome, MATERIAL_RENTAL: RentalHome, PROPERTY_RENTAL: PropertyHome, SHOP: TradeHome, BAR: TradeHome, PRESSING: ServiceHome, CAR_WASH: ServiceHome, OTHER: OtherHome, PRODUCTION: ProductionHome, FARM: FarmHome, SALON: SalonHome };
 
 export default async function DepartmentHome({ params, searchParams }) {
   const { deptId } = await params;

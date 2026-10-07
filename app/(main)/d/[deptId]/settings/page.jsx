@@ -9,7 +9,7 @@ export const metadata = { title: "Business details" };
 
 /** The business details and terms printed on documents (event rental, property rental). */
 const TRADE = ["trade.profile.save", "manageStock"];
-const KINDS = { MATERIAL_RENTAL: ["rental.profile.save", "rentalManage"], PROPERTY_RENTAL: ["property.profile.save", "propertyManage"], SHOP: TRADE, BAR: TRADE, PRESSING: TRADE, CAR_WASH: TRADE, OTHER: TRADE };
+const KINDS = { MATERIAL_RENTAL: ["rental.profile.save", "rentalManage"], PROPERTY_RENTAL: ["property.profile.save", "propertyManage"], SHOP: TRADE, BAR: TRADE, PRESSING: TRADE, CAR_WASH: TRADE, OTHER: TRADE, PRODUCTION: TRADE, FARM: TRADE, SALON: TRADE };
 
 export default async function SettingsPage({ params }) {
   const { deptId } = await params;

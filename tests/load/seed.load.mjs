@@ -1,6 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hasDb, key, loginAs, ok, setupPropertyOrganization, setupRentalOrganization, setupStayOrganization, setupTradeOrganization, setupVenueOrganization } from "../support/fixtures";
+import { hasDb, key, loginAs, ok, setupPropertyOrganization, setupRentalOrganization, setupStayOrganization, setupTradeOrganization, setupVenueOrganization, setupMakersOrganization } from "../support/fixtures";
 import { tradeOperation } from "@/actions/trade";
 import { propertyOperation } from "@/actions/property";
 import { db } from "@/lib/prisma";
@@ -95,7 +95,29 @@ describe.skipIf(!hasDb)("load test seed", () => {
       }
       trades.push({ orgId: o.org.id, bossId: o.boss.id, headId: o.head.id, shopId: o.shop.id, barId: o.bar.id, pressingId: o.pressing.id, carWashId: o.carWash.id, companyId: company.id, productIds, drinkId, crateId, pressItemId, washItemId, workerId });
     }
-    writeFileSync(process.env.LOAD_SEED_OUT || "load-seed.json", JSON.stringify({ orgs, stays, rentals, properties, trades }, null, 1));
+    // Bakery, farm, salon / gym: LOAD_MAKER_ORGS businesses × (Boss + 1 head running the three), in Full accounting.
+    const makers = [];
+    for (let i = 0; i < Number(process.env.LOAD_MAKER_ORGS || 20); i += 1) {
+      headerJar.set("x-forwarded-for", `10.5.${Math.floor(i / 250)}.${(i % 250) + 1}`);
+      const o = await setupMakersOrganization(`Load makers ${i}`);
+      await loginAs(o.head.id, o.bakery.id);
+      const op = (kind, input) => tradeOperation(kind, { idempotencyKey: key(), ...input });
+      const flourId = ok(await op("trade.product.save", { departmentId: o.bakery.id, name: "Flour", kind: "RAW", unit: "kg", costPrice: 500, openingQuantity: 1000000 })).productId;
+      const breadId = ok(await op("trade.product.save", { departmentId: o.bakery.id, name: "Baguette", salePrice: 150, unit: "loaf" })).productId;
+      ok(await op("production.recipe.save", { departmentId: o.bakery.id, productId: breadId, yieldQuantity: 100, lines: [{ materialId: flourId, quantity: 25 }] }));
+      ok(await op("production.batch.record", { departmentId: o.bakery.id, productId: breadId, plannedQuantity: 10000, producedQuantity: 10000 }));
+      const feedId = ok(await op("trade.product.save", { departmentId: o.farm.id, name: "Feed", kind: "RAW", unit: "bag", costPrice: 15000, openingQuantity: 100000 })).productId;
+      const eggsId = ok(await op("trade.product.save", { departmentId: o.farm.id, name: "Eggs tray", unit: "tray", salePrice: 2500 })).productId;
+      const bandId = ok(await op("farm.batch.save", { departmentId: o.farm.id, kind: "POULTRY", name: "Layers", initialCount: 100000 })).batchId;
+      const braidsId = ok(await op("services.item.save", { departmentId: o.salon.id, name: "Braids", basePrice: 8000, minutes: 60 })).itemId;
+      const planId = ok(await op("salon.plan.save", { departmentId: o.salon.id, name: "Gym 1 month", kind: "PERIOD", days: 30, price: 15000 })).planId;
+      const membershipId = ok(await op("salon.membership.sell", { departmentId: o.salon.id, planId, client: { name: `Member ${i}` } })).membershipId;
+      const company = await db.company.findFirst({ where: { organizationId: o.org.id } });
+      await db.$transaction((tx) => setAccountingLevel(tx, { user: o.boss }, { companyId: company.id, level: "FULL" }));
+      await syncCompany(company.id, { full: true });
+      makers.push({ orgId: o.org.id, bossId: o.boss.id, headId: o.head.id, bakeryId: o.bakery.id, farmId: o.farm.id, salonId: o.salon.id, companyId: company.id, flourId, breadId, feedId, eggsId, bandId, braidsId, membershipId });
+    }
+    writeFileSync(process.env.LOAD_SEED_OUT || "load-seed.json", JSON.stringify({ orgs, stays, rentals, properties, trades, makers }, null, 1));
     expect(orgs).toHaveLength(n);
   });
 });

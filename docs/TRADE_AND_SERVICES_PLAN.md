@@ -78,3 +78,50 @@ The Boss's overview cards show each department's figures.
 **Tests:** `tests/integration/trade.test.js` (11: every type end to end, statements, dashboards / reports / search,
 automatic reports and alerts, Boss cards, ledger = statements), `tests/unit/trade-math.test.js` (10),
 `e2e/trade-and-services.spec.mjs` (6: the four types through the real screens).
+
+## Phase 2 (8 Oct 2026): production, farm, salon / spa / gym
+
+Owner's decisions: production costs by **recipes per batch**; the farm handles **poultry / livestock bands, crops
+and fish ponds**; salons and gyms need **appointments** and **memberships & packages**.
+Migration `20261201090000_production_farm_salon` (additive: 3 department types, raw materials, two movement kinds,
+recipes, production batches, farm batches and events, appointments, membership plans, memberships, check-ins; two
+columns on `transactions`).
+
+**Production** (`lib/production/`, type PRODUCTION on the sales & stock engine):
+
+- Products are *products I make or sell* or *raw materials* (bought, used in recipes, never sold at the till).
+- A **recipe** says what one round uses and how many units it makes; its cost per unit and margin follow the
+  materials' average cost, and the page shows how many rounds the stock allows now.
+- A **production batch** (planned quantity → materials from the recipe, or the materials really used typed by
+  hand) takes the materials out at their average cost and puts the **good units made** in at exactly the batch's
+  cost: waste (planned − made) raises the cost per unit. A batch recorded by mistake is voided (products out,
+  materials back).
+- Books: raw materials 321 / 6032, finished products 361 / 734 (variation of finished products), sales 702,
+  purchases of raw materials 602.
+
+**Farm** (`lib/farm/`, type FARM on the sales & stock engine):
+
+- A **batch** is a band of chickens, pigs, goats …, a field and its season, or a fish pond's cycle.
+- Records: deaths, feed and treatments (from the stock of inputs at their average cost — the cost goes to the
+  batch — or only noted), weighings, produce (eggs, harvest, fish) into the stock of a product sold at the till,
+  animals added, notes; a mistake is voided (the stock comes back).
+- **Sell from a batch** (live animals, or a harvest from the field), paid or on credit; expenses and income name
+  their batch on Money in / out. The batch shows alive, deaths and mortality %, feed, produce, cost so far, cost a
+  head, sales and **profit**; it is closed when sold or harvested.
+- Alerts: 2 % or more deaths in a day, batches past their expected end, nothing recorded for 3 days.
+- Books: inputs 321 / 6032, produce 361 / 734 (at no cost: what it cost is in the batch), sales 702.
+
+**Salon, spa, gym** (`lib/salon/`, type SALON on the job tickets engine):
+
+- **Appointments** per staff member (a staff member cannot be booked twice at the same time); *Arrived* opens the
+  visit (a ticket with the service's price, paid like any visit), *Did not come*, *Cancelled* with a reason.
+- **Membership plans**: unlimited for a number of days (monthly gym) or a number of sessions (10-session pack,
+  optional validity). A membership sold is a sale (paid or on credit: the member's debt, 706); **check-ins** count
+  the sessions; states active / starts later / expired / used up / cancelled; renewal reminders by WhatsApp a week
+  before the end or at the last session; *Renew* starts the next one the day after; *Cancel* refunds (the sale is
+  voided).
+- Staff earn commissions per service like car-wash washers (optional).
+
+Tests: `tests/integration/makers.test.js` (7: the three types end to end, statements, dashboards / reports,
+automatic reports, Boss cards, ledger = statements), `tests/unit/makers-math.test.js` (9),
+`e2e/makers.spec.mjs` (5: the three types through the screens, every page for the manager and the Boss).

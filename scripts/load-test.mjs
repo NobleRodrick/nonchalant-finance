@@ -32,7 +32,7 @@ const THINK_MAX = Number(process.env.THINK_MAX || 12000);
 const TIMEOUT = 30_000;
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || "");
 if (!process.env.JWT_SECRET) throw new Error("Set JWT_SECRET (the server's).");
-const { orgs, stays = [], rentals = [], properties = [], trades = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED || "load-seed.json", "utf8"));
+const { orgs, stays = [], rentals = [], properties = [], trades = [], makers = [] } = JSON.parse(readFileSync(process.env.LOAD_SEED || "load-seed.json", "utf8"));
 
 const stats = new Map(); // label → { ms: [], errors, rejected }
 const stat = (label) => stats.get(label) || stats.set(label, { ms: [], errors: 0, rejected: 0 }).get(label);
@@ -283,6 +283,30 @@ const ROLES = {
       [1, () => page(cookie, "income statement", `/accounting/${o.companyId}/statements`)],
     ])();
   },
+  async makerHead(o, cookie) {
+    await pick([
+      [3, () => op(cookie, "bakery sale", "trade.sale.record", { departmentId: o.bakeryId, lines: [{ productId: o.breadId, quantity: 1 + Math.floor(Math.random() * 5) }] })],
+      [1, () => op(cookie, "production batch", "production.batch.record", { departmentId: o.bakeryId, productId: o.breadId, plannedQuantity: 100, producedQuantity: 95 + Math.floor(Math.random() * 6) })],
+      [2, () => op(cookie, "farm feeding", "farm.event.record", { departmentId: o.farmId, batchId: o.bandId, kind: "FEED", quantity: 1, productId: o.feedId })],
+      [2, () => op(cookie, "farm eggs", "farm.event.record", { departmentId: o.farmId, batchId: o.bandId, kind: "PRODUCE", quantity: 5, productId: o.eggsId })],
+      [1, () => op(cookie, "farm sale", "farm.batch.sell", { departmentId: o.farmId, batchId: o.bandId, quantity: 2, amount: 7000 })],
+      [2, () => op(cookie, "gym check-in", "salon.membership.visit", { departmentId: o.salonId, membershipId: o.membershipId })],
+      [2, () => op(cookie, "salon booking", "salon.appointment.save", { departmentId: o.salonId, customerName: "Walk-in", itemId: o.braidsId, startAt: new Date(Date.now() + Math.floor(Math.random() * 30) * 86400000).toISOString() })],
+      [1, () => page(cookie, "farm batch", `/d/${o.farmId}/batches/${o.bandId}`)],
+      [1, () => page(cookie, "production", `/d/${o.bakeryId}/production`)],
+      [1, () => page(cookie, "appointments", `/d/${o.salonId}/appointments`)],
+      [1, () => page(cookie, "memberships", `/d/${o.salonId}/memberships`)],
+    ])();
+  },
+  async makerBoss(o, cookie) {
+    await pick([
+      [2, () => page(cookie, "boss overview", "/boss")],
+      [1, () => page(cookie, "bakery reports (boss)", `/d/${o.bakeryId}/reports?period=month`)],
+      [1, () => page(cookie, "farm dashboard (boss)", `/d/${o.farmId}`)],
+      [1, () => page(cookie, "salon dashboard (boss)", `/d/${o.salonId}`)],
+      [1, () => page(cookie, "income statement", `/accounting/${o.companyId}/statements`)],
+    ])();
+  },
   async boss(o, cookie) {
     await pick([
       [3, () => page(cookie, "boss overview", "/boss")],
@@ -313,10 +337,11 @@ async function main() {
     ...rentals.flatMap((o) => [["rentalHead", o, o.headId, "HEAD"], ["rentalHead2", o, o.head2Id, "HEAD"], ["rentalBoss", o, o.bossId, "ADMIN"]]),
     ...properties.flatMap((o) => [["propertyHead", o, o.headId, "HEAD"], ["propertyHead2", o, o.head2Id, "HEAD"], ["propertyBoss", o, o.bossId, "ADMIN"]]),
     ...trades.flatMap((o) => [["tradeHead", o, o.headId, "HEAD"], ["serviceHead", o, o.headId, "HEAD"], ["tradeBoss", o, o.bossId, "ADMIN"]]),
+    ...makers.flatMap((o) => [["makerHead", o, o.headId, "HEAD"], ["makerBoss", o, o.bossId, "ADMIN"]]),
   ];
   const t0 = Date.now();
   const end = t0 + RAMP + DURATION;
-  console.log(`${people.length} people in ${orgs.length + stays.length + rentals.length + properties.length + trades.length} businesses · ramp ${RAMP / 1000}s · ${DURATION / 1000}s at full load · think ${THINK_MIN}–${THINK_MAX} ms · ${BASES.join(", ")}`);
+  console.log(`${people.length} people in ${orgs.length + stays.length + rentals.length + properties.length + trades.length + makers.length} businesses · ramp ${RAMP / 1000}s · ${DURATION / 1000}s at full load · think ${THINK_MIN}–${THINK_MAX} ms · ${BASES.join(", ")}`);
   const ticker = setInterval(() => {
     const done = [...stats.values()].reduce((s, x) => s + x.ms.length + x.errors, 0);
     console.log(`  ${Math.round((Date.now() - t0) / 1000)}s: ${done} requests`);

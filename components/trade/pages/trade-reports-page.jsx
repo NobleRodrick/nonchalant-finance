@@ -2,6 +2,9 @@ import { pageDate } from "@/lib/page-guards";
 import { periodLabel, resolvePeriod } from "@/lib/reports/periods";
 import { tradeReport } from "@/lib/trade/queries";
 import { serviceReport } from "@/lib/services/queries";
+import { productionReport } from "@/lib/production/queries";
+import { farmBoard } from "@/lib/farm/queries";
+import { salonReport } from "@/lib/salon/queries";
 import { exportFileName } from "@/lib/export/table-export";
 import { formatDateKey } from "@/lib/timezone";
 import { formatMoney } from "@/lib/format";
@@ -96,7 +99,15 @@ export async function TradeReportsPage({ page, searchParams: sp }) {
   const args = { department, organizationId: user.organizationId, fromKey: range.fromKey, toKey: range.toKey, timeZone, todayKey };
   const sells = domain.engine !== "SERVICES";
   const jobs = domain.engine !== "TRADE";
-  const [t, s] = await Promise.all([sells ? tradeReport(args) : null, jobs ? serviceReport(args) : null]);
+  const kind = department.domain;
+  const [t, s, prod, farm, salon] = await Promise.all([
+    sells ? tradeReport(args) : null,
+    jobs ? serviceReport(args) : null,
+    kind === "PRODUCTION" ? productionReport({ departmentId: department.id, fromKey: range.fromKey, toKey: range.toKey, timeZone }) : null,
+    kind === "FARM" ? farmBoard({ departmentId: department.id, todayKey, timeZone }) : null,
+    kind === "SALON" ? salonReport({ departmentId: department.id, fromKey: range.fromKey, toKey: range.toKey, timeZone }) : null,
+  ]);
+  const farmBatches = farm ? farm.batches.filter((b) => b.startKey <= range.toKey && (!b.closedKey || b.closedKey >= range.fromKey)) : [];
   const income = (t || s).income;
   const prev = (t || s).statements.previous;
   const base = `/d/${department.id}`;
@@ -115,6 +126,24 @@ export async function TradeReportsPage({ page, searchParams: sp }) {
       >
         <div className="mt-3"><PeriodPicker range={range} /></div>
       </PageHeader>
+      {prod ? (
+        <Section title="Production" description={`${prod.batches} batch(es) · materials used ${formatMoney(prod.cost)}`} bodyClassName="p-0" id="production-report">
+          <DataTable dense rows={prod.byProduct} rowKey={(p) => p.productId} empty="Nothing made in this period." columns={[{ key: "n", label: "Product", render: (p) => p.name }, { key: "b", label: "Batches", align: "right", render: (p) => p.batches }, { key: "m", label: "Made", align: "right", render: (p) => `${p.produced} ${p.unit || ""}` }, { key: "c", label: "Cost", align: "right", render: (p) => <Money value={p.cost} suffix={false} /> }, { key: "u", label: "Unit cost", align: "right", render: (p) => <Money value={p.unitCost} suffix={false} /> }, { key: "w", label: "Waste", align: "right", render: (p) => (p.waste ? `${p.waste} (${p.wastePct} %)` : "—") }]} />
+        </Section>
+      ) : null}
+      {farm ? (
+        <Section title="Batches and fields" description="Each batch's figures since it started" bodyClassName="p-0">
+          <DataTable dense rows={farmBatches} empty="No batch in this period." columns={[{ key: "n", label: "Batch", render: (b) => <span>{b.name}<span className="block text-xs text-slate-500">{b.referenceNo} · {b.status === "ACTIVE" ? `day ${b.age}` : `closed ${b.closedKey}`}</span></span> }, { key: "a", label: "Alive / area", align: "right", render: (b) => (b.figures.live ? `${b.figures.alive} ${b.unit}` : `${b.initialCount} ${b.unit}`) }, { key: "d", label: "Deaths", align: "right", render: (b) => (b.figures.live ? `${b.figures.dead} (${b.figures.mortalityPct ?? 0} %)` : "—") }, { key: "c", label: "Cost", align: "right", render: (b) => <Money value={b.figures.cost} suffix={false} /> }, { key: "s", label: "Sales", align: "right", render: (b) => <Money value={b.figures.sales} suffix={false} /> }, { key: "p", label: "Profit", align: "right", render: (b) => <Money value={b.figures.profit} suffix={false} /> }]} />
+        </Section>
+      ) : null}
+      {salon ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="salon-report">
+          <StatCard tone="dark" label="Appointments" value={salon.appointments.total} hint={`${salon.appointments.arrived} arrived · ${salon.appointments.cancelled} cancelled`} />
+          <StatCard tone={salon.appointments.noShowPct >= 10 ? "warn" : "default"} label="Did not come" value={salon.appointments.noShow} hint={`${salon.appointments.noShowPct} % of appointments`} />
+          <StatCard tone="in" label="Memberships sold" value={formatMoney(salon.memberships.amount)} hint={`${salon.memberships.sold} sold${salon.memberships.byPlan[0] ? ` · best: ${salon.memberships.byPlan[0].name}` : ""}`} />
+          <StatCard label="Member check-ins" value={salon.checkIns} />
+        </div>
+      ) : null}
       {t ? <TradeSections r={t} base={base} words={domain.words} /> : null}
       {s ? (sells ? <h2 className="text-lg font-semibold">Jobs</h2> : null) : null}
       {s ? <ServiceSectionsReport r={s} base={base} domain={domain} /> : null}
