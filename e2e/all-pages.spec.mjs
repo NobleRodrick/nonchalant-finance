@@ -149,8 +149,8 @@ test("A head of two departments: an overview of both, every page in each, full r
   const problems = await visitAll(page, ["/my-departments", `/d/${dept}`, `/d/${dept}/sell`, `/d/${dept}/menu-stock`, `/d/${dept}/money`, `/d/${dept}/debts`, `/d/${dept}/cash-handover`, `/d/${dept}/report`, `/d/${dept}/history`, `/d/${laundry}`, "/statements", "/profile"], { axe: true, shots: "multihead" });
   expect(problems, problems.join("\n")).toEqual([]);
   await page.goto(`/d/${dept}/money`);
-  await expect(page.getByRole("button", { name: "Record EXPENSE" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Record RENT_INCOME" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record an expense" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record rent income" })).toBeVisible();
   await page.goto("/profile");
   await expect(page.locator("main")).toContainText("Departments you head");
   await expect(page.locator("main")).toContainText("Laundry");

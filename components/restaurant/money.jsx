@@ -242,7 +242,7 @@ export function MoneyBoard({ departmentId, dateKey, dayKey, renderedAt, locked: 
   const can = (p) => perms[p] && !locked;
   const add = (type) =>
     can(TYPES[type].perm) ? (
-      <Button size="sm" variant="outline" onClick={() => setEntry(type)} aria-label={`Record ${type}`}>
+      <Button size="sm" variant="outline" onClick={() => setEntry(type)} aria-label={TYPES[type].title}>
         <Plus className="h-3.5 w-3.5" /> Record
       </Button>
     ) : null;
