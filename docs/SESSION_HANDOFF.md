@@ -2,6 +2,30 @@
 
 Where the Springer Finance work stands, so the next session can continue directly.
 
+## Production readiness: isolation between businesses (8 Oct 2026)
+
+Owner's plan: (1) make the web app fully functional for many businesses at once, (2) paid plans, (3) the
+phone app on the Play Store. Next steps agreed: bring the live site up to date, prove businesses cannot see each
+other's data, then error alerts/backups, French, and a pilot with 3–5 real businesses.
+
+- **Isolation probe** (`npm run test:isolation`, `tests/support/isolation-attacks.js`): every write of the
+  integration tests is replayed by the Boss of another business and by another department of the same business
+  with the same record ids. Result: 680 replays over 116 kinds of operation, all refused.
+- **Fixed** (found by the probe and a code review of every update/delete by id):
+  - a department logo (`*.profile.save`) could take any image of the business, including another department's
+    receipt → now only one's own unattached upload (`usableImage` in `lib/attachments.js`);
+  - a rental item photo could point at another department's file → same rule;
+  - attaching a file that is not one's own was silently ignored → now refused with a message (`linkAttachments`);
+  - an asset (`rental.asset.save`) could point at another business's purchase; a tenant charge / inspection at
+    another business's repair or inspection → now checked against the department;
+  - a stored offline result was returned to anyone of the business knowing the key → only to its author;
+  - files could be downloaded before replacing a temporary password → refused.
+- Tests: `tests/integration/isolation.test.js`, `tests/integration/isolation-rentals.test.js`.
+- **Health check:** `GET /api/health/db` → `{ ok, database, schema: current|behind|unknown }` (no data, no secrets).
+- Live site (8 Oct): GitHub `main` = `416ec51` (deployed by Vercel); the owner was asked to run
+  `npx prisma migrate status` / `deploy` and check the Vercel variables (`docs/DEPLOYMENT.md`, "Bringing production
+  up to date"). Local `.env` has no `ARCJET_KEY`, `NEXT_PUBLIC_APP_URL` or `EMAIL_FROM`.
+
 ## The product (owner's rules)
 
 - A platform where the **Boss registers a business**, creates **departments** (type chosen at creation: restaurant, bar,

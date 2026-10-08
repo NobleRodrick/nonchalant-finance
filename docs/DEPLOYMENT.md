@@ -102,6 +102,23 @@ Then deploy the application code.
 - Stop using `prisma db push`. Schema changes are `npx prisma migrate dev --name <change>` locally, then
   `npx prisma migrate deploy` in production.
 
+## Bringing production up to date (any release)
+
+1. On the owner's Windows computer, in the project folder: `npx prisma migrate status` (lists the migrations not
+   applied yet), then `npx prisma migrate deploy` (applies them in order; all are additive).
+2. Vercel → Settings → Environment Variables. Required: `DATABASE_URL` (port 6543,
+   `?pgbouncer=true&connection_limit=1`), `DIRECT_URL`, `JWT_SECRET` (32+ characters). Recommended:
+   `NEXT_PUBLIC_APP_URL` (`https://springer-finance.vercel.app`, used in e-mail links), `ARCJET_KEY`, `RESEND_API_KEY`,
+   `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`, `GEMINI_API_KEY`; later `EMAIL_FROM` with a domain verified in Resend.
+   Redeploy after changing a variable.
+3. Push (Vercel deploys `main`), then Inngest → **Resync**.
+4. Open **`/api/health/db`** on the live site. It returns no data, only:
+   `{"ok":true,"database":"reachable","schema":"current"}` when everything is in place;
+   `"schema":"behind"` (status 503) when a migration is missing (step 1); `"database":"unreachable"` when
+   `DATABASE_URL` is wrong. The newest migration the code needs is in `lib/schema-version.js` (a unit test keeps it
+   equal to the last folder of `prisma/migrations`).
+5. Sign in as the Boss and open each department once.
+
 ## Sign-in security release (`20261020090000_auth_hardening`)
 
 1. `npx prisma migrate deploy` (additive columns on `users`; it empties `refresh_tokens`, so **everyone signs in once

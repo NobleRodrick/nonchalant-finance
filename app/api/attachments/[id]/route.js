@@ -6,6 +6,7 @@ import { accessibleDepartmentIds } from "@/lib/access";
 export async function GET(_req, { params }) {
   const user = await getCurrentUser();
   if (!user?.organizationId) return new Response("Unauthorized", { status: 401 });
+  if (user.mustChangePassword) return new Response("Replace your temporary password first.", { status: 403 });
   const { id } = await params;
   const file = await db.attachment.findFirst({ where: { id, organizationId: user.organizationId } });
   if (!file) return new Response("Not found", { status: 404 });

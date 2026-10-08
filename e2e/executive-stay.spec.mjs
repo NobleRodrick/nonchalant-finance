@@ -176,8 +176,8 @@ test("assets of an apartment and a repair that blocks it", async ({ page }) => {
 test("dashboard, reports and the Boss's card agree", async ({ page }) => {
   await login(page, head.email, head.password);
   await page.goto(`/d/${stayId}`);
-  await expect(page.getByTestId("stay-kpis")).toContainText("1 / 2", { timeout: 60_000 });
-  await expect(page.getByTestId("apartments-now")).toContainText("Occupied");
+  await expect(page.locator("main").getByTestId("stay-kpis").filter({ visible: true })).toContainText("1 / 2", { timeout: 60_000 });
+  await expect(page.locator("main").getByTestId("apartments-now").filter({ visible: true })).toContainText("Occupied");
   await page.goto(`/d/${stayId}/reports?period=month`);
   const rep = page.getByTestId("stay-report");
   await expect(rep).toContainText("Income statement (profit & loss)", { timeout: 60_000 });

@@ -135,6 +135,7 @@ For the existing Supabase database, apply the migrations as described in [`docs/
 | `npm run test:unit` | Money, stock and format maths, time zones, permissions (no database). |
 | `npm run test:integration` | Server actions on a disposable database: the full reference day of the plan (§10.4), menu & stock, concurrency (no overselling), idempotency, money, debts, voids, discount limit, report return/approve, multi-department people, department types, access and cross-organization isolation, AI insights. |
 | `npm run test:e2e` | Playwright in a real browser: the restaurant day from registration to the Boss approving the report, every page for every role (with accessibility checks), redirects, fixed sidebar and phone drawer. |
+| `npm run test:isolation` | The integration tests again, with every write they make replayed by **another business** and by **another department** using the same record ids: each replay must be refused (about 680 attempts over 116 kinds of operation). |
 | `npm run test:offline` | Builds the production app and runs `e2e-offline/`: the server is stopped for real while a head sells, undoes and records money; it is started again and everything arrives once. |
 | `npm run test:load:seed` + `npm run test:load` | Load test: 540 people in 180 businesses using a running production server at once (see `docs/OFFLINE_AND_PERFORMANCE.md` §7). |
 | `npm run lint` / `npm run build` | ESLint and the production build. |

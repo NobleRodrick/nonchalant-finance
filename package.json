@@ -20,7 +20,8 @@
     "db:check": "node scripts/check-schema-drift.mjs",
     "test:load:seed": "vitest run --config tests/load/vitest.config.mjs",
     "test:load": "node scripts/load-test.mjs",
-    "test:load:verify": "vitest run --config tests/load/vitest.verify.config.mjs"
+    "test:load:verify": "vitest run --config tests/load/vitest.verify.config.mjs",
+    "test:isolation": "node scripts/test-isolation.mjs"
   },
   "dependencies": {
     "@arcjet/next": "^1.13.0",

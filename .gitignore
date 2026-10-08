@@ -60,3 +60,4 @@ next-env.d.ts
 /_update-*/
 demo.json
 load-seed.json
+isolation-probe.jsonl
