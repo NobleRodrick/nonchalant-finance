@@ -15,9 +15,10 @@ export const metadata = { title: "Accounting" };
  */
 export default async function AccountingHome() {
   const user = await requirePageUser();
-  if (!["ADMIN", "ACCOUNTANT"].includes(user.role)) redirect("/home");
+  if (!["ADMIN", "ACCOUNTANT", "HEAD"].includes(user.role)) redirect("/home");
   const companies = await companiesFor(user);
-  if (user.role === "ACCOUNTANT" && companies.length === 1) redirect(`/accounting/${companies[0].id}`);
+  if (user.role === "HEAD" && !companies.length) redirect("/home");
+  if (user.role !== "ADMIN" && companies.length === 1) redirect(`/accounting/${companies[0].id}`);
   const ids = companies.map((c) => c.id);
   const [departments, pending] = await Promise.all([
     db.department.findMany({ where: { organizationId: user.organizationId, companyId: { in: ids } }, select: { id: true, name: true, domain: true, isActive: true, companyId: true }, orderBy: { createdAt: "asc" } }),

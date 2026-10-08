@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { accountingPage } from "@/lib/accounting/page";
+import { entryScope } from "@/lib/accounting/access";
 import { journalEntries } from "@/lib/accounting/reports";
 import { JOURNALS } from "@/lib/accounting/chart";
 import { fiscalYearStart } from "@/lib/accounting/balances";
@@ -21,14 +22,14 @@ const STATUS = { POSTED: ["Posted", "emerald"], PENDING: ["Waiting for approval"
 export default async function EntriesPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey } = await accountingPage(companyId);
+  const { company, access, todayKey } = await accountingPage(companyId);
   const range = resolvePeriod(sp, todayKey, "month");
   if (range.preset === "year") range.fromKey = fiscalYearStart(todayKey, company.fiscalYearStartMonth);
   const journal = JOURNALS.some((j) => j.code === sp?.journal) ? sp.journal : null;
   const status = STATUS[sp?.status] ? sp.status : null;
   const q = typeof sp?.q === "string" && sp.q.trim() ? sp.q.trim().slice(0, 60) : null;
   const page = Math.max(1, Number(sp?.page) || 1);
-  const { total, rows } = await journalEntries({ company, journal, status, q, fromKey: status === "PENDING" ? "2000-01-01" : range.fromKey, toKey: status === "PENDING" ? "2999-12-31" : range.toKey, take: 100, skip: (page - 1) * 100 });
+  const { total, rows } = await journalEntries({ company, journal, status, q, scope: entryScope(access), fromKey: status === "PENDING" ? "2000-01-01" : range.fromKey, toKey: status === "PENDING" ? "2999-12-31" : range.toKey, take: 100, skip: (page - 1) * 100 });
   const pages = Math.ceil(total / 100);
   const qs = (patch) => `?${new URLSearchParams({ ...Object.fromEntries(Object.entries(sp || {}).filter(([, v]) => typeof v === "string")), ...patch })}`;
   return (

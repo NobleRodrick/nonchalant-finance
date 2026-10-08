@@ -17,13 +17,13 @@ export const metadata = { title: "General ledger" };
 export default async function LedgerPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey } = await accountingPage(companyId);
+  const { company, access, todayKey } = await accountingPage(companyId);
   const range = resolvePeriod(sp, todayKey, "year");
   if (range.preset === "year") range.fromKey = fiscalYearStart(todayKey, company.fiscalYearStartMonth);
   const accounts = await db.ledgerAccount.findMany({ where: { companyId }, select: { number: true, label: true, isActive: true }, orderBy: { number: "asc" } });
   const number = /^\d{1,10}$/.test(sp?.account || "") ? sp.account : null;
   const partnerKey = typeof sp?.partner === "string" ? sp.partner : null;
-  const gl = number ? await generalLedger({ company, number, fromKey: range.fromKey, toKey: range.toKey, partnerKey }) : null;
+  const gl = number ? await generalLedger({ company, number, fromKey: range.fromKey, toKey: range.toKey, partnerKey, departmentIds: access.departmentIds }) : null;
   const title = number ? (accounts.find((a) => a.number === number)?.label ? `${number} · ${accounts.find((a) => a.number === number).label}` : `Accounts ${number}…`) : "Choose an account";
   return (
     <div className="space-y-4">

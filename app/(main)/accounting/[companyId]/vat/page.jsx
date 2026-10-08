@@ -16,10 +16,11 @@ export const metadata = { title: "VAT" };
 export default async function VatPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey, timeZone } = await accountingPage(companyId);
+  const { company, access, todayKey, timeZone } = await accountingPage(companyId);
   if (!company.vatEnabled) notFound();
   const month = /^\d{4}-\d{2}$/.test(sp?.month || "") ? sp.month : addMonths(monthOf(todayKey), -1);
-  const [v, expenses] = await Promise.all([vatMonth({ company, month }), expensesForVat({ company, month, timeZone })]);
+  const departmentIds = access.departmentIds;
+  const [v, expenses] = await Promise.all([vatMonth({ company, month, departmentIds }), expensesForVat({ company, month, timeZone, departmentIds })]);
   const ended = month < monthOf(todayKey);
   const label = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
   return (
@@ -45,7 +46,7 @@ export default async function VatPage({ params, searchParams }) {
               v.creditUsed ? { label: "Credit used", value: <Money value={v.creditUsed} /> } : null,
               { label: v.toPay ? "To pay" : "Credit carried forward", value: <Money value={v.toPay || v.carried} />, strong: true },
             ]} />
-            <div className="mt-3">{ended ? <VatReturnButton companyId={companyId} month={month} disabled={!v.collected && !v.deductible} /> : <p className="text-sm text-slate-500">The return is recorded after the month has ended.</p>}</div>
+            <div className="mt-3">{access.scoped ? <p className="text-sm text-slate-500">The return covers the whole company: the Boss records it. These are your departments' figures.</p> : ended ? <VatReturnButton companyId={companyId} month={month} disabled={!v.collected && !v.deductible} /> : <p className="text-sm text-slate-500">The return is recorded after the month has ended.</p>}</div>
           </>
         )}
       </Section>

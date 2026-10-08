@@ -9,8 +9,8 @@ import { db } from "@/lib/prisma";
 import { runAction } from "@/lib/action";
 import { orgTimezone, requireAdmin, requireOrgUser } from "@/lib/access";
 import { revalidateOperations } from "@/lib/transaction-runner";
-import { accountingAccess } from "@/lib/accounting/access";
-import { assignDepartment, saveCompany, setAccountantCompanies, setAccountFor, setAccountingLevel, setFeatures } from "@/lib/accounting/company-service";
+import { accountingAccess, requireCompanyWide } from "@/lib/accounting/access";
+import { assignDepartment, saveCompany, setAccountantCompanies, setAccountFor, setAccountingLevel, setFeatures, setHeadBookkeeper } from "@/lib/accounting/company-service";
 import { hashPassword } from "@/lib/auth";
 import { validatePasswordStrength } from "@/lib/password-utils";
 import { invalid } from "@/lib/errors";
@@ -34,11 +34,15 @@ function boss(name, fn) {
   });
 }
 
-/** A company's books: the Boss or one of its accountants. */
-function books(name, companyId, fn, { full = true } = {}) {
+/**
+ * A company's books: the Boss, an accountant or a head who keeps them. `companyWide`: the action
+ * concerns the whole company (not for a head limited to his departments).
+ */
+function books(name, companyId, fn, { full = true, companyWide = null } = {}) {
   return runAction(name, async () => {
     const user = await requireOrgUser();
     const access = await accountingAccess(user, companyId, { full });
+    if (companyWide) requireCompanyWide(access, companyWide);
     const out = await db.$transaction((tx) => fn(tx, { user, access, timeZone: orgTimezone(user) }), TX);
     revalidateOperations();
     return out;
@@ -74,7 +78,7 @@ export async function setAccountForAction(input) {
 }
 
 export async function saveLedgerAccountAction(input) {
-  return books("saveLedgerAccount", input?.companyId, (tx, c) => saveLedgerAccount(tx, c, input || {}));
+  return books("saveLedgerAccount", input?.companyId, (tx, c) => saveLedgerAccount(tx, c, input || {}), { companyWide: "The chart of accounts" });
 }
 
 /** Brings the books up to date now (the departments changed since the last update, or all of them). */
@@ -109,6 +113,7 @@ export async function closeBooksAction(input) {
   return runAction("closeBooks", async () => {
     const user = await requireOrgUser();
     const access = await accountingAccess(user, input?.companyId);
+    requireCompanyWide(access, "Closing the books");
     await syncCompany(access.company.id, { full: false });
     const out = await db.$transaction((tx) => closeThrough(tx, { user, access, timeZone: orgTimezone(user) }, input || {}), TX);
     revalidateOperations();
@@ -117,11 +122,11 @@ export async function closeBooksAction(input) {
 }
 
 export async function reopenBooksAction(input) {
-  return books("reopenBooks", input?.companyId, (tx, c) => reopenLastMonth(tx, c, input || {}));
+  return books("reopenBooks", input?.companyId, (tx, c) => reopenLastMonth(tx, c, input || {}), { companyWide: "Reopening the books" });
 }
 
 export async function allocateResultAction(input) {
-  return books("allocateResult", input?.companyId, (tx, c) => allocateResult(tx, c, input || {}));
+  return books("allocateResult", input?.companyId, (tx, c) => allocateResult(tx, c, input || {}), { companyWide: "The allocation of the result" });
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -154,6 +159,11 @@ export async function createAccountantAction(data) {
 
 export async function setAccountantCompaniesAction(input) {
   return boss("setAccountantCompanies", (tx, c) => setAccountantCompanies(tx, c, input || {}));
+}
+
+/** The Boss lets a department head keep the books (his departments or the whole company), or stops it. */
+export async function setHeadBookkeeperAction(input) {
+  return boss("setHeadBookkeeper", (tx, c) => setHeadBookkeeper(tx, c, input || {}));
 }
 
 export async function setExpenseVatAction(input) {
@@ -192,6 +202,7 @@ export async function importStatementAction(input) {
   return runAction("importStatement", async () => {
     const user = await requireOrgUser();
     const access = await accountingAccess(user, input?.companyId);
+    requireCompanyWide(access, "Reconciliation");
     await syncIfDirty(access.company.id);
     const out = await db.$transaction((tx) => importStatement(tx, { user, access, timeZone: orgTimezone(user) }, input || {}), TX);
     revalidateOperations();
@@ -200,17 +211,17 @@ export async function importStatementAction(input) {
 }
 
 export async function autoMatchAction(input) {
-  return books("autoMatch", input?.companyId, (tx, c) => autoMatch(tx, c, input || {}));
+  return books("autoMatch", input?.companyId, (tx, c) => autoMatch(tx, c, input || {}), { companyWide: "Reconciliation" });
 }
 
 export async function matchLineAction(input) {
-  return books("matchLine", input?.companyId, (tx, c) => matchLine(tx, c, input || {}));
+  return books("matchLine", input?.companyId, (tx, c) => matchLine(tx, c, input || {}), { companyWide: "Reconciliation" });
 }
 
 export async function setStatementLineAction(input) {
-  return books("setStatementLine", input?.companyId, (tx, c) => setLineStatus(tx, c, input || {}));
+  return books("setStatementLine", input?.companyId, (tx, c) => setLineStatus(tx, c, input || {}), { companyWide: "Reconciliation" });
 }
 
 export async function postFromStatementLineAction(input) {
-  return books("postFromStatementLine", input?.companyId, (tx, c) => postFromLine(tx, c, input || {}));
+  return books("postFromStatementLine", input?.companyId, (tx, c) => postFromLine(tx, c, input || {}), { companyWide: "Reconciliation" });
 }

@@ -4,8 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-/** The sections of a company's books (Full accounting: all; Simple: settings only). */
-export function CompanyNav({ companyId, full, features = {}, pending = 0 }) {
+/**
+ * The sections of a company's books (Full accounting: all; Simple: settings only). A head limited to
+ * his departments has no company-wide sections (reconciliation, closing); heads have no settings.
+ */
+export function CompanyNav({ companyId, full, features = {}, pending = 0, access = { companyWide: true, settings: true } }) {
   const pathname = usePathname();
   const base = `/accounting/${companyId}`;
   const tabs = full
@@ -18,9 +21,9 @@ export function CompanyNav({ companyId, full, features = {}, pending = 0 }) {
         ["/partners", "Customers & suppliers"],
         features.vat ? ["/vat", "VAT"] : null,
         features.payables ? ["/bills", "Supplier bills"] : null,
-        features.reconciliation ? ["/reconciliation", "Reconciliation"] : null,
-        ["/closing", "Closing"],
-        ["/settings", "Settings"],
+        features.reconciliation && access.companyWide ? ["/reconciliation", "Reconciliation"] : null,
+        access.companyWide ? ["/closing", "Closing"] : null,
+        access.settings ? ["/settings", "Settings"] : null,
       ].filter(Boolean)
     : [["/settings", "Settings"]];
   return (

@@ -4,6 +4,7 @@ import { requirePageUser, pageDate } from "@/lib/page-guards";
 import { readableDepartmentIds, effectiveRole } from "@/lib/access";
 import { roleHasPermission, PERMISSIONS } from "@/lib/permissions";
 import { buildStatements } from "@/lib/finance/statements";
+import { vatIncludedIn } from "@/lib/accounting/vat-included";
 import { formatDateKey } from "@/lib/timezone";
 import { resolvePeriod } from "@/lib/reports/periods";
 import { serialize } from "@/lib/serialize";
@@ -25,7 +26,11 @@ export default async function StatementsPage({ searchParams }) {
   const wanted = String(sp?.dept || "all");
   const scope = wanted === "all" ? departments : departments.filter((d) => wanted.split(",").includes(d.id));
   const range = resolvePeriod(sp, todayKey);
-  const statement = await buildStatements({ organizationId: user.organizationId, departments: scope.length ? scope : departments, fromKey: range.fromKey, toKey: range.toKey, timeZone });
+  const shown = scope.length ? scope : departments;
+  const [statement, vat] = await Promise.all([
+    buildStatements({ organizationId: user.organizationId, departments: shown, fromKey: range.fromKey, toKey: range.toKey, timeZone }),
+    vatIncludedIn({ departments: shown, fromKey: range.fromKey, toKey: range.toKey }),
+  ]);
   return (
     <div>
       <PageHeader title="Statements" description="Income, cash, stock and debts for any period, from the recorded figures. Print them or export them for your accountant." />
@@ -38,6 +43,7 @@ export default async function StatementsPage({ searchParams }) {
         previousLabel={statement.previous ? `${formatDateKey(statement.previous.fromKey)} – ${formatDateKey(statement.previous.toKey)}` : null}
         todayKey={todayKey}
         statement={serialize(statement)}
+        vat={vat}
         tab={["income", "cash", "stock", "debts"].includes(sp?.tab) ? sp.tab : "income"}
       />
     </div>

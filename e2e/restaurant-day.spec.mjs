@@ -181,8 +181,9 @@ test("the head sells with a discount, records money in and out, debts and repaym
     ["EXPENSE", "5000", "Cooking gas"],
     ["OTHER_EXPENSE", "1000", "Bank / MoMo charges"],
   ];
+  const buttons = { RENT_INCOME: "Record rent income", OTHER_INCOME: "Record other income", EXPENSE: "Record an expense", OTHER_EXPENSE: "Record another expense" };
   for (const [type, amount, category] of entries) {
-    await page.getByRole("button", { name: `Record ${type}` }).click();
+    await page.getByRole("button", { name: buttons[type], exact: true }).click();
     const d = page.getByRole("dialog");
     await d.getByLabel("Amount (FCFA)").fill(amount);
     if (category) await selectByText(d.getByLabel("Category"), category);

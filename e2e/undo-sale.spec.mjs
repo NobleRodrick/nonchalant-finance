@@ -17,7 +17,7 @@ let deptId = "";
 async function toast(page, text) {
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: text }).first()).toBeVisible();
 }
-const row = (page) => page.getByTestId("dish-row-Rice");
+const row = (page) => page.locator("main").getByTestId("dish-row-Rice").filter({ visible: true });
 
 test("setup: a business with one department head and a dish of 10 plates", async ({ page }) => {
   await page.goto("/register");

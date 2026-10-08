@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/prisma";
 import { accountingPage } from "@/lib/accounting/page";
+import { reportDepartments } from "@/lib/accounting/access";
 import { BUCKETS, partnerLedger } from "@/lib/accounting/partners";
 import { formatDateKey } from "@/lib/timezone";
 import { DataTable, Money, Section, StatCard } from "@/components/kit/primitives";
@@ -15,12 +16,12 @@ export const metadata = { title: "Customers and suppliers" };
 export default async function PartnersPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey } = await accountingPage(companyId);
+  const { company, access, todayKey } = await accountingPage(companyId);
   const side = sp?.side === "suppliers" ? "suppliers" : "customers";
-  const departments = await db.department.findMany({ where: { companyId }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+  const departments = await db.department.findMany({ where: { companyId, ...(access.scoped ? { id: { in: access.departmentIds } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
   const dept = departments.some((d) => d.id === sp?.dept) ? sp.dept : null;
   const asOfKey = /^\d{4}-\d{2}-\d{2}$/.test(sp?.date || "") && sp.date <= todayKey ? sp.date : todayKey;
-  const { rows, totals } = await partnerLedger({ company, side, asOfKey, departmentId: dept });
+  const { rows, totals } = await partnerLedger({ company, side, asOfKey, departmentIds: reportDepartments(access, dept) });
   const names = new Map(departments.map((d) => [d.id, d.name]));
   const account = side === "suppliers" ? "401" : "411";
   const tab = (k, l) => <Link role="tab" aria-selected={side === k} href={`?side=${k}`} className={cn("rounded-md px-3 py-1.5 text-sm", side === k ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200")}>{l}</Link>;

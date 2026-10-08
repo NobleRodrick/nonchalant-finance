@@ -154,3 +154,30 @@ unmatched lines (fees, interest).
   Excel / PDF), VAT on cash receipts for services (the books use invoice basis), stock variation entries at
   year end (purchases stay expenses).
 
+
+## Department heads keep the books (Dec 2026, migration `20261210090000_head_bookkeepers`)
+
+- **Who**: in Full accounting, the Boss lets a department head keep the books from *Accounting →
+  Settings → Department heads who keep the books*: **the books of his departments** or **the books of
+  the whole company** (like an accountant). Stored on `company_members` (`scope` COMPANY |
+  DEPARTMENTS, `grantedById`); the head is notified; every change is audited
+  (`HEAD_BOOKKEEPER_SET`). Back to Simple accounting, or the grant withdrawn: no access.
+- **One access check** (`lib/accounting/access.js` `accountingAccess`) returns `departmentIds`
+  (null = whole company). Pages and services filter with it: entries (`entryScope`: an entry of one
+  of his departments, or a manual entry whose every line is one of them — lines without a department
+  are excluded explicitly, SQL `NULL` semantics), entry detail, general ledger, trial balance (with a
+  note when entries shared with other departments make his totals differ), income statement,
+  customers & suppliers, VAT of his departments (typing the VAT of his expenses), supplier bills.
+- **His department only**: manual entries must give every line one of his departments; drafts,
+  reversals and deletions are limited to his entries.
+- **Segregation of duties**: approving entries above the threshold, closing / reopening months,
+  allocating the result and the settings are the Boss's; the VAT return, reconciliation, the chart of
+  accounts, the balance sheet and the cash-flow statement are company-wide (the Boss, an accountant or
+  a whole-company head).
+- **Documents**: every report exports to Excel (.xlsx), CSV and PDF (journal, ledger, trial balance, statements,
+  customers and suppliers, VAT), for the head as for the Boss.
+- **Statements page and VAT**: when the company keeps Full accounting with VAT, the Boss's (and
+  heads') Statements show the VAT inside the money figures — collected (owed to the State),
+  deductible (from supplier invoices) — and the **result without VAT**, which is the SYSCOHADA
+  result (`lib/accounting/vat-included.js`, read from the books).
+- Tests: `tests/integration/head-bookkeeping.test.js` (7), `e2e/accounting.spec.mjs` (5).

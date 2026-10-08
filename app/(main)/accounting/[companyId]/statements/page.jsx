@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/prisma";
 import { accountingPage } from "@/lib/accounting/page";
+import { reportDepartments } from "@/lib/accounting/access";
 import { balanceSheetAt, cashFlowFor, incomeStatementFor } from "@/lib/accounting/reports";
 import { fiscalYearStart } from "@/lib/accounting/balances";
 import { BALANCE_SHEET_ASSET_LINES, BALANCE_SHEET_LIABILITY_LINES, INCOME_STATEMENT_LINES } from "@/lib/accounting/statement-math";
@@ -29,13 +30,15 @@ const TABS = [
 export default async function StatementsPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey } = await accountingPage(companyId);
+  const { company, access, todayKey } = await accountingPage(companyId);
+  // A head limited to his departments: their income statement (the balance sheet and the cash flow are the company's).
+  const tabs = access.scoped ? TABS.slice(0, 1) : TABS;
   const range = resolvePeriod(sp, todayKey, "year");
   if (range.preset === "year") range.fromKey = fiscalYearStart(todayKey, company.fiscalYearStartMonth);
   // The balance sheet is at a date that has come.
   if (sp?.tab === "balance" && range.toKey > todayKey) range.toKey = todayKey;
-  const tab = TABS.some(([k]) => k === sp?.tab) ? sp.tab : "income";
-  const departments = await db.department.findMany({ where: { companyId }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+  const tab = tabs.some(([k]) => k === sp?.tab) ? sp.tab : "income";
+  const departments = await db.department.findMany({ where: { companyId, ...(access.scoped ? { id: { in: access.departmentIds } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
   const dept = departments.some((d) => d.id === sp?.dept) ? sp.dept : null;
   const label = periodLabel(range);
   const href = (k) => `?${new URLSearchParams({ ...Object.fromEntries(Object.entries(sp || {}).filter(([, v]) => typeof v === "string")), tab: k })}`;
@@ -43,7 +46,7 @@ export default async function StatementsPage({ params, searchParams }) {
   let body = null;
   let sheets = [];
   if (tab === "income") {
-    const is = await incomeStatementFor({ company, fromKey: range.fromKey, toKey: range.toKey, departmentIds: dept ? [dept] : null, compare: true });
+    const is = await incomeStatementFor({ company, fromKey: range.fromKey, toKey: range.toKey, departmentIds: reportDepartments(access, dept), compare: true });
     const prevLabel = `${formatDateKey(`${Number(range.fromKey.slice(0, 4)) - 1}${range.fromKey.slice(4)}`, { weekday: false })} – ${formatDateKey(`${Number(range.toKey.slice(0, 4)) - 1}${range.toKey.slice(4)}`.replace(/-02-29$/, "-02-28"), { weekday: false })}`;
     body = <IncomeStatementTable lines={is.lines} previous={is.previous} periodLabel={label} previousLabel={prevLabel} />;
     sheets = [statementSheet("Compte de résultat", INCOME_STATEMENT_LINES, is.lines, is.previous)];
@@ -70,7 +73,7 @@ export default async function StatementsPage({ params, searchParams }) {
       <PeriodPicker range={range} />
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div className="flex gap-1" role="tablist">
-          {TABS.map(([k, l]) => (
+          {tabs.map(([k, l]) => (
             <Link key={k} role="tab" aria-selected={tab === k} href={href(k)} className={cn("rounded-md px-3 py-1.5 text-sm", tab === k ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50")}>{l}</Link>
           ))}
         </div>

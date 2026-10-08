@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { db } from "@/lib/prisma";
 import { accountingPage } from "@/lib/accounting/page";
 import { closingChecks, monthEnd, monthsOf, openingSuggestions } from "@/lib/accounting/closing";
@@ -16,6 +17,7 @@ export default async function ClosingPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
   const { company, access, todayKey, timeZone } = await accountingPage(companyId);
+  if (!access.companyWide) redirect(`/accounting/${companyId}`);
   const months = await monthsOf({ company, timeZone });
   const lastEnded = addMonths(monthOf(todayKey), -1);
   const openPast = months.filter((m) => m.status === "OPEN" && m.month <= lastEnded).map((m) => m.month).sort();

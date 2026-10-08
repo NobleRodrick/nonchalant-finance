@@ -2490,14 +2490,25 @@ model Company {
 }
 
 /// An accountant's access to a company (the Boss sees every company).
+/** Which books a company member keeps. */
+enum CompanyMemberScope {
+  COMPANY
+  DEPARTMENTS
+}
+
 model CompanyMember {
-  id        String   @id @default(uuid())
+  id        String             @id @default(uuid())
   companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive  Boolean            @default(true)
+  // An accountant keeps the whole company's books; a department head the Boss authorizes keeps
+  // either the whole company's books or only those of the departments he heads.
+  scope     CompanyMemberScope @default(COMPANY)
+  grantedById String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @default(now()) @updatedAt
 
   @@unique([companyId, userId])
   @@index([userId])

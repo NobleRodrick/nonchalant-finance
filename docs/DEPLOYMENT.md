@@ -151,6 +151,12 @@ Then deploy the application code.
    ledger balanced and immutable). Every business stays in Simple accounting until the Boss switches.
 2. Push, then resync Inngest (`ledger-nightly-sync` 02:30, `ledger-department-sync` on records).
 
+## Heads keep the books (`20261210090000_head_bookkeepers`)
+
+Additive: `company_members.scope` (COMPANY | DEPARTMENTS, default COMPANY — existing accountants keep the
+whole company), `grantedById`, `updatedAt`. `npx prisma migrate deploy`, then push. No new environment
+variable or scheduled job. `/api/health/db` reports `schema: "current"` once applied.
+
 ## Production, farm, salon / spa / gym (`20261201090000_production_farm_salon`)
 
 1. `npx prisma migrate deploy` (additive: three department types, raw materials, recipes, production batches,

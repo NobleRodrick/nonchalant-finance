@@ -12,6 +12,7 @@ import { formatAmount, formatPct, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { navigateTo } from "@/lib/navigation";
 import { PERIOD_PRESETS } from "@/lib/reports/periods";
+import { formatDateKey } from "@/lib/timezone";
 
 const PRESETS = PERIOD_PRESETS.map((p) => ({ id: p.key, label: p.label }));
 const TABS = [
@@ -31,6 +32,17 @@ function csvDownload(filename, rows) {
   URL.revokeObjectURL(a.href);
 }
 
+/** A VAT line under the result (no comparison columns). */
+function VatRow({ label, value }) {
+  return (
+    <tr className="border-b border-slate-100">
+      <td className="py-2 pl-6 pr-3 text-sm text-slate-600">{label}</td>
+      <td className="py-2 pr-3 text-right text-sm"><StatementAmount value={value} /></td>
+      <td colSpan={2} />
+    </tr>
+  );
+}
+
 function Row({ label, value, previous, change, strong, indent, href, sign }) {
   const v = sign === "-" ? -value : value;
   const content = <StatementAmount value={v} className={cn(strong && "font-bold")} />;
@@ -44,7 +56,7 @@ function Row({ label, value, previous, change, strong, indent, href, sign }) {
   );
 }
 
-export function StatementsView({ organizationName, departments, scopeIds, scopeAll, range, previousLabel, todayKey, statement, tab }) {
+export function StatementsView({ organizationName, departments, scopeIds, scopeAll, range, previousLabel, todayKey, statement, tab, vat = null }) {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -67,6 +79,7 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
       [["Sales", "salesGross"], ["Rent income", "rentIncome"], ["Events (venues, rentals)", "eventsRevenue"], ["Nights stayed (guest house)", "staysRevenue"], ["Office rent and tenant charges", "rentRevenue"], ["Job tickets collected (pressing, car wash, jobs)", "servicesRevenue"], ["Kept from cancelled bookings", "cancellationIncome"], ["Gains on assets sold", "assetGains"], ["Other income", "otherIncome"], ["Total money in", "moneyIn"], ["Discounts", "discounts"], ["Purchases", "purchases"], ["Expenses", "expenses"], ["Other expenses", "otherExpenses"], ["Assets lost", "assetLosses"], ["Depreciation", "depreciation"], ["Debts written off", "badDebts"], ["Change in stock of goods", "stockChange"], ["Total money out", "moneyOut"], ["Result", "result"]].forEach(([l, k]) =>
         rows.push([l, income[k], cmp?.[k] ?? "", income.change?.[k] ?? ""])
       );
+      if (vat) rows.push([], ["VAT collected (included in money in)", vat.collected], ["Deductible VAT (included in money out)", vat.deductible], ["Result without VAT", income.result - vat.net]);
     } else if (tab === "stock") {
       rows.push(["Dish", "Opening", "Added", "Sold", "Spoiled", "Corrections", "Closing", "Unit price", "Value"]);
       stock.rows.forEach((r) => rows.push([r.name, r.opening, r.added, r.sold, r.spoiled, r.corrected, r.closing, r.unitPrice, r.value]));
@@ -169,12 +182,25 @@ export function StatementsView({ organizationName, departments, scopeIds, scopeA
                   <Row label="Total money out" value={income.moneyOut} previous={cmp?.moneyOut} change={income.change?.moneyOut} strong sign="-" />
                   <tr><td colSpan={4} className="h-3" /></tr>
                   <Row label="Result (profit / loss)" value={income.result} previous={cmp?.result} change={income.change?.result} strong />
+                  {vat ? (
+                    <>
+                      <tr><td colSpan={4} className="pb-1 pl-3 pt-4 text-xs font-bold uppercase tracking-wide text-indigo-700">VAT inside these amounts</td></tr>
+                      <VatRow label="VAT collected (in money in, owed to the State)" value={-vat.collected} />
+                      {vat.deductible ? <VatRow label="Deductible VAT (in money out, from supplier invoices)" value={vat.deductible} /> : null}
+                      <tr className="border-b border-slate-100 border-t-2 border-t-slate-300 bg-indigo-50" data-testid="result-without-vat">
+                        <td className="py-2 pl-3 pr-3 text-sm font-bold text-slate-900">Result without VAT</td>
+                        <td className="py-2 pr-3 text-right text-sm"><StatementAmount value={income.result - vat.net} className="font-bold" /></td>
+                        <td colSpan={2} />
+                      </tr>
+                    </>
+                  ) : null}
                 </tbody>
               </table>
               <div className="mt-3 grid gap-1 text-xs text-slate-500">
                 <span>Result margin (result ÷ money in): <strong className="text-slate-800">{income.margin === null ? "—" : `${income.margin}%`}</strong></span>
                 <span>Net sales (sales − discounts on sales): <strong className="text-slate-800">{formatMoney(income.netSales)}</strong></span>
                 {previousLabel ? <span>Previous period: {previousLabel}</span> : null}
+                {vat ? <span>VAT {vat.companies.map((c) => `${c.ratePct} % (${c.name}${c.since ? `, from ${formatDateKey(c.since)}` : ""})`).join(", ")}: amounts above include it, as received and paid. The result without VAT is the result of the books (SYSCOHADA income statement). VAT to pay this period: <strong className="text-slate-800">{formatMoney(Math.max(0, vat.net))}</strong>.</span> : null}
               </div>
             </div>
             <div className="space-y-6">

@@ -5,7 +5,8 @@ import { login } from "./support/login.mjs";
  * Full accounting through the real interface (docs/ACCOUNTING_PLAN.md): the Boss's business starts
  * in Simple; he switches its company to Full accounting, records the capital brought in with a
  * ready-made entry, reads the statements (the balance sheet balances), the trial balance and the
- * ledger, closes nothing yet, and adds an accountant who signs in to the books only.
+ * ledger, closes nothing yet, and adds an accountant who signs in to the books only. Then he lets
+ * the department head keep the books of his department, and switches VAT on (Statements show it).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -13,6 +14,7 @@ const tag = Date.now().toString(36);
 const boss = { name: "Books Owner", email: `bowner-${tag}@e2e.local`, password: "Plantain-2468" };
 const accountant = { name: "Awa Accountant", email: `bacc-${tag}@e2e.local`, password: "Ledger-24680" };
 let companyUrl = "";
+const chef = { email: `bchef-${tag}@e2e.local`, password: "" };
 
 async function toast(page, text) {
   await expect(page.locator("[data-sonner-toast]").filter({ hasText: text }).first()).toBeVisible({ timeout: 30_000 });
@@ -36,7 +38,8 @@ test("the Boss's business starts in Simple accounting; he switches its company t
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Add a department head" }).click();
   await page.locator("#p-name-0").fill("Chef");
-  await page.locator("#p-email-0").fill(`bchef-${tag}@e2e.local`);
+  await page.locator("#p-email-0").fill(chef.email);
+  chef.password = await page.locator("#p-pass-0").inputValue();
   await page.getByRole("button", { name: "Finish setup" }).click();
   await page.getByRole("button", { name: /open the app/i }).click();
   await page.waitForURL(/\/boss/);
@@ -107,4 +110,59 @@ test("the Boss adds an accountant; the accountant signs in to the books only", a
   await page.waitForLoadState("networkidle");
   await page.goto(`${companyUrl}/entries`);
   await expect(page.locator("main").getByTestId("entries")).toContainText("Capital brought in");
+});
+
+test("the Boss lets the head keep the books of his department; the head does it, limited to it", async ({ page }) => {
+  test.setTimeout(240_000);
+  await login(page, boss.email, boss.password);
+  await page.goto(`${companyUrl}/settings`);
+  const main = page.locator("main");
+  await main.getByLabel("Books Chef keeps").selectOption("DEPARTMENTS");
+  await toast(page, "now keeps");
+
+  await login(page, chef.email, chef.password);
+  const nav = page.getByRole("navigation", { name: "Main navigation" }).first();
+  await nav.getByRole("link", { name: "Accounting" }).click();
+  await page.waitForURL(/\/accounting\/[0-9a-f-]{36}$/, { timeout: 60_000 });
+  await expect(main.getByText("You keep the books of Restaurant")).toBeVisible();
+  const books = page.getByRole("navigation", { name: "Books" });
+  await expect(books.getByRole("link", { name: "Trial balance" })).toBeVisible();
+  await expect(books.getByRole("link", { name: "Closing" })).toHaveCount(0);
+  await expect(books.getByRole("link", { name: "Settings" })).toHaveCount(0);
+  // The capital entry is the company's (no department): not in his books.
+  await page.goto(`${companyUrl}/entries`);
+  await expect(main.getByTestId("entries")).not.toContainText("Capital brought in");
+  // He posts an entry on his department.
+  await page.goto(`${companyUrl}/entries/new`);
+  await expect(main.getByText("Give every line one of your departments")).toBeVisible();
+  await main.getByLabel("Start from").selectOption({ label: "Salaries paid by bank" });
+  await main.getByLabel("Debit of line 1").fill("25000");
+  await page.getByRole("button", { name: "Balance with an empty line" }).click();
+  await expect(main.getByTestId("entry-balance")).toContainText("Balanced");
+  await page.getByRole("button", { name: "Post the entry" }).click();
+  await toast(page, "posted");
+  await page.waitForURL(/\/entries\/[0-9a-f-]{36}$/);
+  await page.goto(`${companyUrl}/trial-balance`);
+  await expect(main.getByTestId("trial-totals")).toContainText("25 000");
+  await page.goto(`${companyUrl}/statements`);
+  await expect(page.getByRole("tab", { name: "Balance sheet" })).toHaveCount(0);
+  // Company-wide pages send him back to his books.
+  await page.goto(`${companyUrl}/closing`);
+  await page.waitForURL(new RegExp(`${companyUrl.split("/").pop()}$`), { timeout: 30_000 });
+  await page.goto(`${companyUrl}/settings`);
+  await page.waitForURL(new RegExp(`${companyUrl.split("/").pop()}$`), { timeout: 30_000 });
+});
+
+test("with VAT on, the Statements page shows the VAT inside the figures and the result without VAT", async ({ page }) => {
+  test.setTimeout(180_000);
+  await login(page, boss.email, boss.password);
+  await page.goto(`${companyUrl}/settings`);
+  const main = page.locator("main");
+  await main.getByLabel("The company is registered for VAT").check();
+  await main.getByLabel("VAT applies from").fill(`${new Date().toISOString().slice(0, 7)}-01`);
+  await main.getByRole("button", { name: "Save", exact: true }).click();
+  await toast(page, "Settings saved");
+  await page.goto("/statements");
+  await expect(main.getByTestId("result-without-vat")).toBeVisible();
+  await expect(main.getByText("VAT collected (in money in, owed to the State)")).toBeVisible();
 });

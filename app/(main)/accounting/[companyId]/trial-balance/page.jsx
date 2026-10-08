@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/prisma";
 import { accountingPage } from "@/lib/accounting/page";
+import { reportDepartments } from "@/lib/accounting/access";
 import { trialBalance, fiscalYearStart } from "@/lib/accounting/balances";
 import { resolvePeriod, periodLabel } from "@/lib/reports/periods";
-import { DataTable, Section, StatementAmount } from "@/components/kit/primitives";
+import { Banner, DataTable, Section, StatementAmount } from "@/components/kit/primitives";
 import { PeriodPicker } from "@/components/kit/period-picker";
 import { ExportMenu } from "@/components/kit/export-menu";
 import { FilterBar } from "@/components/kit/filter-bar";
@@ -17,13 +18,13 @@ const side = (v, s) => (s === "D" ? (v > 0 ? v : 0) : v < 0 ? -v : 0);
 export default async function TrialBalancePage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey } = await accountingPage(companyId);
+  const { company, access, todayKey } = await accountingPage(companyId);
   const range = resolvePeriod(sp, todayKey, "year");
   if (range.preset === "year") range.fromKey = fiscalYearStart(todayKey, company.fiscalYearStartMonth);
-  const departments = await db.department.findMany({ where: { companyId }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
+  const departments = await db.department.findMany({ where: { companyId, ...(access.scoped ? { id: { in: access.departmentIds } } : {}) }, select: { id: true, name: true }, orderBy: { createdAt: "asc" } });
   const dept = departments.some((d) => d.id === sp?.dept) ? sp.dept : null;
   const classFilter = /^[1-8]$/.test(sp?.class || "") ? sp.class : null;
-  const tb = await trialBalance({ company, fromKey: range.fromKey, toKey: range.toKey, departmentIds: dept ? [dept] : null });
+  const tb = await trialBalance({ company, fromKey: range.fromKey, toKey: range.toKey, departmentIds: reportDepartments(access, dept) });
   const rows = tb.rows.filter((r) => !classFilter || r.number.startsWith(classFilter));
   const sum = (k, s) => rows.reduce((a, r) => a + side(r[k], s), 0);
   const ledger = (n) => `/accounting/${companyId}/ledger?account=${n}&period=custom&from=${range.fromKey}&to=${range.toKey}`;
@@ -45,6 +46,11 @@ export default async function TrialBalancePage({ params, searchParams }) {
         ]} />
         <ExportMenu fileName={`${company.name}-trial-balance-${range.fromKey}-${range.toKey}`} sheets={[sheet]} />
       </div>
+      {(access.scoped || dept) && tb.totals.debit !== tb.totals.credit ? (
+        <Banner tone="info">
+          Department figures: entries shared with other departments (or the company) count here only for their lines of {access.scoped && !dept ? "your departments" : "this department"}, so debits and credits differ by <StatementAmount value={Math.abs(tb.totals.debit - tb.totals.credit)} />. The company's trial balance balances.
+        </Banner>
+      ) : null}
       <Section title={`Trial balance · ${periodLabel(range)}`} description="Income and expense accounts open at the start of the fiscal year; the others carry everything before." bodyClassName="p-0">
         <DataTable
           dense

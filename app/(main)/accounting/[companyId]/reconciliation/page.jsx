@@ -12,7 +12,8 @@ export const metadata = { title: "Reconciliation" };
 /** Bank and MoMo statements imported, how many lines are matched, and a new import. */
 export default async function ReconciliationPage({ params }) {
   const { companyId } = await params;
-  const { company } = await accountingPage(companyId);
+  const { company, access } = await accountingPage(companyId);
+  if (!access.companyWide) notFound();
   if (!company.reconciliationEnabled) notFound();
   const [accounts, statements] = await Promise.all([
     db.ledgerAccount.findMany({ where: { companyId, reconcilable: true, isActive: true }, select: { number: true, label: true }, orderBy: { number: "asc" } }),

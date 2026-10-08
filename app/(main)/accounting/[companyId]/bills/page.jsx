@@ -12,13 +12,13 @@ export const metadata = { title: "Supplier bills" };
 export default async function BillsPage({ params, searchParams }) {
   const { companyId } = await params;
   const sp = await searchParams;
-  const { company, todayKey } = await accountingPage(companyId);
+  const { company, access, todayKey } = await accountingPage(companyId);
   if (!company.payablesEnabled) notFound();
   const status = sp?.status === "all" ? null : "open";
   const [bills, suppliers, departments] = await Promise.all([
-    listBills({ company, status }),
+    listBills({ company, status, departmentIds: access.departmentIds }),
     db.supplier.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
-    db.department.findMany({ where: { companyId, isActive: true }, select: { id: true, name: true, domain: true }, orderBy: { createdAt: "asc" } }),
+    db.department.findMany({ where: { companyId, isActive: true, ...(access.scoped ? { id: { in: access.departmentIds } } : {}) }, select: { id: true, name: true, domain: true }, orderBy: { createdAt: "asc" } }),
   ]);
   const categories = Object.fromEntries(departments.map((d) => [d.id, ["PURCHASE", "EXPENSE", "OTHER_EXPENSE"].flatMap((t) => categoriesFor(t, d.domain).filter((c) => !c.internal).map((c) => ({ id: c.id, label: c.label })))]));
   return (

@@ -208,7 +208,7 @@ test("offline: sell, record money, undo; the pages open without a connection; al
   // Money: record an expense offline; it is in the day's figures at once.
   await nav.getByRole("link", { name: "Money in / out" }).click();
   await expect(page.getByRole("heading", { name: "Money in / out" })).toBeVisible();
-  await page.getByRole("button", { name: "Record EXPENSE" }).click();
+  await page.getByRole("button", { name: "Record an expense", exact: true }).click();
   const m = page.getByRole("dialog");
   await m.getByLabel("Amount (FCFA)").fill("1500");
   // A photo of the receipt, kept on the computer until the record is sent.

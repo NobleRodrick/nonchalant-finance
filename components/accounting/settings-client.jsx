@@ -9,7 +9,7 @@ import { FormDialog, SubmitButton } from "@/components/kit/form-dialog";
 import { Banner, DataTable, Field, KeyValues, Pill, Section, inputClass, selectClass } from "@/components/kit/primitives";
 import { runWithToast, wholeNumber } from "@/components/kit/client";
 import { formatMoney } from "@/lib/format";
-import { createAccountantAction, saveLedgerAccountAction, setAccountantCompaniesAction, setAccountForAction, setAccountingLevelAction, setFeaturesAction } from "@/actions/accounting";
+import { createAccountantAction, saveLedgerAccountAction, setAccountantCompaniesAction, setAccountForAction, setAccountingLevelAction, setFeaturesAction, setHeadBookkeeperAction } from "@/actions/accounting";
 import { updateEmployee } from "@/actions/organization";
 import { CompanyDialog } from "./companies-client";
 
@@ -28,7 +28,7 @@ function LevelCard({ company, records, isBoss }) {
     if (ok) router.refresh();
   };
   return (
-    <Section title="Accounting level" description="The heads' screens never change: only what the Boss and the accountant see.">
+    <Section title="Accounting level" description="The heads' daily screens never change. In Full accounting the Boss can also let heads keep the books (below).">
       <div className="grid gap-3 md:grid-cols-2">
         <div className={`rounded-lg border p-4 ${!full ? "border-slate-900 ring-1 ring-slate-900" : "border-slate-200"}`}>
           <div className="flex items-center justify-between"><h3 className="font-semibold">Simple</h3>{!full ? <Pill tone="emerald">Current</Pill> : null}</div>
@@ -105,7 +105,7 @@ function FeaturesForm({ company, categories }) {
         </div>
         <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={f.payablesEnabled} onChange={(e) => setF({ ...f, payablesEnabled: e.target.checked })} /> Supplier bills paid later (accounts payable)</label>
         <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={f.reconciliationEnabled} onChange={(e) => setF({ ...f, reconciliationEnabled: e.target.checked })} /> Bank and Mobile Money reconciliation (statements imported)</label>
-        <Field label="Manual entries by an accountant above this amount wait for the Boss (0: never)" htmlFor="appr" className="max-w-sm"><input id="appr" inputMode="numeric" className={inputClass} value={f.approvalThreshold} onChange={(e) => setF({ ...f, approvalThreshold: wholeNumber(e.target.value) })} /></Field>
+        <Field label="Manual entries by an accountant or a head above this amount wait for the Boss (0: never)" htmlFor="appr" className="max-w-sm"><input id="appr" inputMode="numeric" className={inputClass} value={f.approvalThreshold} onChange={(e) => setF({ ...f, approvalThreshold: wholeNumber(e.target.value) })} /></Field>
         <SubmitButton busy={busy} onClick={save}>Save</SubmitButton>
       </div>
     </Section>
@@ -155,6 +155,48 @@ function AccountantsPanel({ company, accountants, companies }) {
           <Field label="Temporary password" required htmlFor="ac-pass" hint="At least 8 characters with a letter and a number."><input id="ac-pass" className={inputClass} value={f.tempPassword} onChange={(e) => setF({ ...f, tempPassword: e.target.value })} /></Field>
         </div>
       </FormDialog>
+    </Section>
+  );
+}
+
+const KEEPS = [
+  ["", "No access to the books"],
+  ["DEPARTMENTS", "The books of his departments"],
+  ["COMPANY", "The books of the whole company"],
+];
+
+/**
+ * The Boss lets department heads keep the books: of their own departments only (entries, ledger,
+ * trial balance, income statement, customers and suppliers, VAT of their expenses, supplier bills),
+ * or of the whole company like an accountant. Approving large entries, closing and settings stay the
+ * Boss's.
+ */
+function HeadBookkeepersPanel({ company, heads }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(null);
+  const set = async (h, scope) => {
+    setBusy(h.id);
+    const label = KEEPS.find(([k]) => k === scope)[1].toLowerCase();
+    const ok = await runWithToast(setHeadBookkeeperAction({ companyId: company.id, userId: h.id, scope: scope || null }), { success: scope ? `${h.name} now keeps ${label.replace("his", "his own")}.` : `${h.name} no longer keeps the books.` });
+    setBusy(null);
+    if (ok) router.refresh();
+  };
+  return (
+    <Section title="Department heads who keep the books" description={`Let a head do the accounting himself: the books of his departments only, or of the whole company. He then sees Accounting in his menu. ${company.approvalThreshold ? `His manual entries above ${formatMoney(company.approvalThreshold)} wait for your approval` : "Set an approval threshold above to approve his larger manual entries"}; closing the months and the settings stay yours.`}>
+      {heads.length ? (
+        <ul className="divide-y divide-slate-100 text-sm" data-testid="head-bookkeepers">
+          {heads.map((h) => (
+            <li key={h.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+              <span>
+                {h.name} <span className="text-xs text-slate-500">· {h.title || "Head"} · {h.departments.join(", ")}</span>
+              </span>
+              <select aria-label={`Books ${h.name} keeps`} className={selectClass + " max-w-xs"} disabled={busy === h.id} value={h.scope || ""} onChange={(e) => set(h, e.target.value)}>
+                {KEEPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-sm text-slate-500">No department head yet. Add heads in People.</p>}
     </Section>
   );
 }
@@ -254,7 +296,7 @@ function AccountMapPanel({ companyId, categories, roles, accounts }) {
   );
 }
 
-export function CompanySettings({ isBoss, company, departments, records, accounts, categories, roles, accountants, companies }) {
+export function CompanySettings({ isBoss, company, departments, records, accounts, categories, roles, accountants, companies, heads = [] }) {
   const [editing, setEditing] = useState(false);
   const full = company.level === "FULL";
   return (
@@ -276,6 +318,7 @@ export function CompanySettings({ isBoss, company, departments, records, account
         <>
           {isBoss ? <FeaturesForm company={company} categories={categories} /> : <Section title="VAT and options"><KeyValues rows={[{ label: "VAT", value: company.vatEnabled ? `${company.vatRate} % from ${company.vatSince}` : "Off" }, { label: "Supplier bills", value: company.payablesEnabled ? "On" : "Off" }, { label: "Reconciliation", value: company.reconciliationEnabled ? "On" : "Off" }, { label: "Approval above", value: company.approvalThreshold ? formatMoney(company.approvalThreshold) : "Never" }]} /></Section>}
           {isBoss ? <AccountantsPanel company={company} accountants={accountants} companies={companies} /> : null}
+          {isBoss ? <HeadBookkeepersPanel company={company} heads={heads} /> : null}
           <ChartPanel companyId={company.id} accounts={accounts} />
           {isBoss ? <AccountMapPanel companyId={company.id} categories={categories} roles={roles} accounts={accounts} /> : null}
         </>

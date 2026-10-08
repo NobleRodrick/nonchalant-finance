@@ -13,7 +13,8 @@ export const metadata = { title: "Statement" };
 /** One statement: each line matched with the books, or set aside, or posted from it. */
 export default async function StatementPage({ params }) {
   const { companyId, statementId } = await params;
-  const { company } = await accountingPage(companyId);
+  const { company, access } = await accountingPage(companyId);
+  if (!access.companyWide) notFound();
   const st = await statementDetail({ company, statementId });
   if (!st) notFound();
   const accounts = await db.ledgerAccount.findMany({ where: { companyId, isActive: true }, select: { number: true, label: true }, orderBy: { number: "asc" } });

@@ -3,6 +3,7 @@ import { accountingPage } from "@/lib/accounting/page";
 import { CATEGORY_ACCOUNTS, ROLE_ACCOUNTS, ROLE_LABELS } from "@/lib/accounting/account-map";
 import { MONEY_CATEGORIES, categoryLabel } from "@/data/categories";
 import { CompanySettings } from "@/components/accounting/settings-client";
+import { headBookkeepers } from "@/lib/accounting/company-service";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Accounting settings" };
@@ -12,12 +13,13 @@ export default async function SettingsPage({ params }) {
   const { companyId } = await params;
   const { company, access } = await accountingPage(companyId, { full: false });
   const full = company.accountingLevel === "FULL";
-  const [departments, records, accounts, accountants, companies] = await Promise.all([
+  const [departments, records, accounts, accountants, companies, heads] = await Promise.all([
     db.department.findMany({ where: { companyId }, select: { id: true, name: true, domain: true } }),
     db.transaction.count({ where: { department: { companyId } } }),
     full ? db.ledgerAccount.findMany({ where: { companyId }, orderBy: { number: "asc" }, select: { id: true, number: true, name: true, label: true, isActive: true, isSystem: true, reconcilable: true } }) : [],
     access.isBoss ? db.user.findMany({ where: { organizationId: company.organizationId, role: "ACCOUNTANT" }, select: { id: true, name: true, email: true, isActive: true, companyMemberships: { where: { isActive: true }, select: { companyId: true } } }, orderBy: { name: "asc" } }) : [],
     access.isBoss ? db.company.findMany({ where: { organizationId: company.organizationId }, select: { id: true, name: true } }) : [],
+    access.isBoss && full ? headBookkeepers(db, company) : [],
   ]);
   const map = company.accountMap || {};
   const domains = new Set(departments.map((d) => d.domain));
@@ -34,6 +36,7 @@ export default async function SettingsPage({ params }) {
       roles={roles}
       accountants={accountants.map((a) => ({ id: a.id, name: a.name, email: a.email, isActive: a.isActive, companyIds: a.companyMemberships.map((m) => m.companyId) }))}
       companies={companies}
+      heads={heads}
     />
   );
 }

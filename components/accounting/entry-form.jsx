@@ -27,15 +27,17 @@ export const TEMPLATES = [
   { key: "asset", label: "Equipment bought by the company (paid by bank)", journal: "BQ", lines: [["2441", "D"], ["5211", "C"]] },
 ];
 
-export function EntryForm({ companyId, accounts, departments, initial = null, openKey = null, approvalNote = null }) {
+export function EntryForm({ companyId, accounts, departments, initial = null, openKey = null, approvalNote = null, requireDepartment = false }) {
   const router = useRouter();
+  // A head limited to his departments: every line carries one of them (the first by default).
+  const fresh = () => ({ ...blank(), departmentId: requireDepartment ? departments[0]?.id || "" : "" });
   const [f, setF] = useState(() => ({
     journal: initial?.journal || "OD",
     dateKey: initial?.dateKey || new Date().toISOString().slice(0, 10),
     label: initial?.label || "",
     reference: initial?.reference || "",
     note: initial?.note || "",
-    lines: initial?.lines?.length ? initial.lines.map((l) => ({ ...blank(), ...l, debit: l.debit || "", credit: l.credit || "" })) : [blank(), blank()],
+    lines: initial?.lines?.length ? initial.lines.map((l) => ({ ...fresh(), ...l, debit: l.debit || "", credit: l.credit || "" })) : [fresh(), fresh()],
   }));
   const [busy, setBusy] = useState(null);
   const byNumber = useMemo(() => new Map(accounts.map((a) => [a.number, a.label])), [accounts]);
@@ -48,7 +50,7 @@ export function EntryForm({ companyId, accounts, departments, initial = null, op
   const applyTemplate = (key) => {
     const t = TEMPLATES.find((x) => x.key === key);
     if (!t) return;
-    setF({ ...f, journal: t.journal, label: f.label || t.label, lines: t.lines.map(([account]) => ({ ...blank(), account })) });
+    setF({ ...f, journal: t.journal, label: f.label || t.label, lines: t.lines.map(([account]) => ({ ...fresh(), account })) });
   };
 
   const submit = async (post) => {
@@ -117,7 +119,7 @@ export function EntryForm({ companyId, accounts, departments, initial = null, op
                   <td className="px-2 py-1.5"><input aria-label={`Label of line ${i + 1}`} className={inputClass} value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} /></td>
                   <td className="w-40 px-2 py-1.5">
                     <select aria-label={`Department of line ${i + 1}`} className={selectClass} value={l.departmentId} onChange={(e) => setLine(i, { departmentId: e.target.value })}>
-                      <option value="">—</option>
+                      {requireDepartment ? null : <option value="">—</option>}
                       {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                     </select>
                   </td>
@@ -133,13 +135,13 @@ export function EntryForm({ companyId, accounts, departments, initial = null, op
             <tfoot>
               <tr className="bg-slate-50 font-semibold">
                 <td className="px-3 py-2" colSpan={4}>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setF({ ...f, lines: [...f.lines, blank()] })}><Plus className="h-4 w-4" /> Add a line</Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setF({ ...f, lines: [...f.lines, fresh()] })}><Plus className="h-4 w-4" /> Add a line</Button>
                   {diff !== 0 && debit + credit > 0 ? (
                     <Button type="button" size="sm" variant="ghost" className="ml-2" onClick={() => {
                       const i = f.lines.findIndex((l) => !l.debit && !l.credit);
                       const patch = diff > 0 ? { credit: diff, debit: "" } : { debit: -diff, credit: "" };
                       if (i >= 0) setLine(i, patch);
-                      else setF({ ...f, lines: [...f.lines, { ...blank(), ...patch }] });
+                      else setF({ ...f, lines: [...f.lines, { ...fresh(), ...patch }] });
                     }}>Balance with an empty line</Button>
                   ) : null}
                 </td>

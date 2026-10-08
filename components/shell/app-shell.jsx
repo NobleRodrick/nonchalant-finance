@@ -26,6 +26,8 @@ export async function AppShell({ user, children }) {
         ])
       : [0, 0, 0],
   ]);
+  // A head the Boss lets keep the books (Full accounting) also sees Accounting.
+  const keepsBooks = hasOrg && user.role === "HEAD" ? await db.companyMember.count({ where: { userId: user.id, isActive: true, company: { organizationId: user.organizationId, accountingLevel: "FULL" } } }) : 0;
 
   const depts = departments.map((d) => {
     const role = effectiveRole(user, d.id);
@@ -64,6 +66,7 @@ export async function AppShell({ user, children }) {
         : [
           depts.length > 1 ? { href: "/my-departments", label: "All my departments", icon: "LayoutGrid" } : null,
           canStatements ? { href: "/statements", label: "Statements", icon: "LineChart" } : null,
+          keepsBooks ? { href: "/accounting", label: "Accounting", icon: "BookOpen" } : null,
         ].filter(Boolean);
 
   // Pages kept on this computer for offline use (lib/offline, public/sw.js).

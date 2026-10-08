@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/prisma";
 import { accountingPage } from "@/lib/accounting/page";
+import { entryScope } from "@/lib/accounting/access";
 import { entryDetail } from "@/lib/accounting/reports";
 import { JOURNAL_LABELS } from "@/lib/accounting/chart";
 import { formatDateKey } from "@/lib/timezone";
@@ -15,7 +16,9 @@ export const metadata = { title: "Journal entry" };
 export default async function EntryPage({ params }) {
   const { companyId, entryId } = await params;
   const { company, access, user } = await accountingPage(companyId);
-  const e = await entryDetail({ company, entryId });
+  const e = await entryDetail({ company, entryId, scope: entryScope(access) });
+  // The record behind an entry opens for the Boss and for the head of its department.
+  const canOpenSource = access.isBoss || (access.isHead && user.memberships?.some((m) => m.departmentId === e?.departmentId));
   if (!e) notFound();
   const department = e.departmentId ? await db.department.findUnique({ where: { id: e.departmentId }, select: { name: true } }) : null;
   const deptNames = new Map((await db.department.findMany({ where: { companyId }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
@@ -64,8 +67,8 @@ export default async function EntryPage({ params }) {
               e.reversedBy ? { label: "Reversed by", value: <Link className="underline" href={`/accounting/${companyId}/entries/${e.reversedBy.id}`}>{e.reversedBy.number}</Link> } : null,
               e.note ? { label: "Note", value: e.note } : null,
             ]} />
-            {e.source && access.isBoss ? <Link className="mt-3 inline-block text-sm underline" href={e.source.href}>Open the record: {e.source.label}</Link> : null}
-            {e.source && !access.isBoss ? <p className="mt-3 text-xs text-slate-500">From: {e.source.label}. Corrections are made by the department (the books follow).</p> : null}
+            {e.source && canOpenSource ? <Link className="mt-3 inline-block text-sm underline" href={e.source.href}>Open the record: {e.source.label}</Link> : null}
+            {e.source && !canOpenSource ? <p className="mt-3 text-xs text-slate-500">From: {e.source.label}. Corrections are made by the department (the books follow).</p> : null}
           </Section>
           <EntryActions companyId={companyId} entry={{ id: e.id, status: e.status, isManual: e.isManual, reversed: Boolean(e.reversedAt || e.reversalOf), number: e.number, mine: e.createdById === user.id }} canApprove={access.canApprove} />
         </div>

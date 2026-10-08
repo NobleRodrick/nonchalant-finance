@@ -2,6 +2,19 @@
 
 Where the Springer Finance work stands, so the next session can continue directly.
 
+## Heads keep the books; VAT on the Statements page (8 Oct 2026)
+
+- Live test on Neur Artisa (owner's OK): Full accounting + VAT 19.25 % built the books from the 6 records,
+  trial balance and balance sheet balanced, VAT September 9 306; put back to Simple, VAT off.
+- Owner asked: (1) Statements must not count VAT as income → result without VAT shown
+  (`lib/accounting/vat-included.js`); (2) when the Boss authorizes Full accounting, department heads can
+  keep the books and produce the documents → `docs/ACCOUNTING_PLAN.md` "Department heads keep the books".
+- **New migration** `20261210090000_head_bookkeepers` (additive). Deploy: `npx prisma migrate deploy`
+  (the owner's PC reaches Supabase; the Linux shell on his PC can too since all domains are allowed:
+  `$HOME/pcli` has prisma 6.19 + pg), then push (the owner pushes; no GitHub credentials here).
+- Bug found by the browser test and fixed: a company entry without a department showed in a head's
+  department books (SQL NULL in `every … in`); `entryScope` excludes such lines explicitly.
+
 ## Production readiness: isolation between businesses (8 Oct 2026)
 
 Owner's plan: (1) make the web app fully functional for many businesses at once, (2) paid plans, (3) the
