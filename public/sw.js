@@ -7,10 +7,14 @@
  *  - Data requests of the app router (RSC): network only. When they fail the router falls back
  *    to loading the page itself, which the rule above serves.
  *  - Writes never go through here: the app's outbox (IndexedDB) sends them to /api/sync.
- * The pages cache holds the signed-in person's data: it is emptied at sign-out and when another
- * person signs in on this computer ("purge-pages").
+ * The pages cache holds the signed-in person's data. Each copy keeps the marker of the session
+ * that saved it (lib/offline/owner.js) and is shown only while the browser holds the same marker:
+ * a session that ended (sign-out, expiry, cookies cleared, signed out everywhere, another person)
+ * never shows its pages to the next person, with or without a connection. The cache is emptied at
+ * sign-out, when another person signs in ("purge-pages"), when the server answers with the
+ * sign-in page, and when a saved copy's session is over.
  */
-const VERSION = "3"; // v3: timeouts, pages saved only with all their code, parallel saving
+const VERSION = "4"; // v4: pages kept with their session's marker (older copies are dropped)
 const STATIC_CACHE = `sf-static-v${VERSION}`;
 const ASSETS_CACHE = `sf-assets-v${VERSION}`;
 const PAGES_CACHE = `sf-pages-v${VERSION}`; // a new version saves the pages (and their code) again
@@ -27,6 +31,9 @@ const WARM_ASSETS_AT_ONCE = 6;
 const MAX_PAGES = 80;
 const MAX_STATIC = 500;
 const KEEP = [STATIC_CACHE, ASSETS_CACHE, PAGES_CACHE];
+const OWNER_COOKIE = "sf_offline";
+const OWNER_HEADER = "x-sf-owner";
+const OWNER_RE = /^[0-9a-f-]{36}$/i;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -65,11 +72,24 @@ function isHtml(response) {
   return (response.headers.get("content-type") || "").includes("text/html");
 }
 
-/** A page worth keeping: a real page of the signed-in app (not the sign-in page). */
+/** A page worth keeping: a real page of the signed-in app (not the sign-in page), with its owner. */
 function keepable(response) {
   if (!response || !response.ok || !isHtml(response)) return false;
+  if (!OWNER_RE.test(response.headers.get(OWNER_HEADER) || "")) return false;
   const final = new URL(response.url || self.location.origin);
   return !["/login", "/register", "/"].includes(final.pathname);
+}
+
+/** The server answered with the sign-in page: whoever saved pages here is signed out. */
+function signedOut(response) {
+  if (!response || response.type === "opaqueredirect") return false;
+  if (response.status === 401) return true;
+  const final = new URL(response.url || self.location.origin);
+  return response.ok && isHtml(response) && ["/login", "/register"].includes(final.pathname);
+}
+
+function purgePages() {
+  return caches.delete(PAGES_CACHE);
 }
 
 async function storePage(url, response) {
@@ -78,12 +98,55 @@ async function storePage(url, response) {
   trim(PAGES_CACHE, MAX_PAGES);
 }
 
+/**
+ * The marker of the current session: a string, null when the browser holds none (the session is
+ * over), or undefined when this browser cannot tell the worker (no Cookie Store API: the page
+ * then checks it itself, see guarded()).
+ */
+async function currentOwner() {
+  if (!self.cookieStore) return undefined;
+  try {
+    const c = await self.cookieStore.get(OWNER_COOKIE);
+    return c?.value || null;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The saved copy wrapped with a check that runs before anything shows: unless this browser still
+ * holds the session that saved it, the page hides, the saved pages are emptied and the offline
+ * page opens instead.
+ */
+async function guarded(response, owner) {
+  const html = await response.text();
+  const check =
+    `<script>(function(){var m=document.cookie.match(/(?:^|; )${OWNER_COOKIE}=([^;]*)/);` +
+    `if(!m||decodeURIComponent(m[1])!==${JSON.stringify(owner)}){document.documentElement.style.display="none";` +
+    `try{navigator.serviceWorker.controller.postMessage({type:"purge-pages"})}catch(e){}` +
+    `location.replace("${OFFLINE_URL}?ended=1")}})()</script>`;
+  const at = html.search(/<head[^>]*>/i);
+  const body = at < 0 ? check + html : html.replace(/<head[^>]*>/i, (h) => h + check);
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/** The saved copy of a page, only for the session that saved it. */
 async function cachedPage(url) {
   const cache = await caches.open(PAGES_CACHE);
+  // Same page for another day (?date=…) is not used: figures would be of another day.
   const exact = await cache.match(pageKey(url), { ignoreVary: true });
-  if (exact) return exact;
-  // Same page for another day (?date=…): better than nothing? No — figures would be of another day.
-  return null;
+  if (!exact) return null;
+  const owner = exact.headers.get(OWNER_HEADER) || "";
+  if (!OWNER_RE.test(owner)) return null;
+  const now = await currentOwner();
+  if (now !== undefined && now !== owner) {
+    await purgePages(); // that session is over: none of its pages is shown again
+    return null;
+  }
+  return guarded(exact, owner);
 }
 
 function timeout(ms) {
@@ -130,10 +193,11 @@ async function handleNavigation(event) {
   try {
     const response = await Promise.race([network, timeout(NAV_TIMEOUT_MS)]);
     if (keepable(response)) event.waitUntil(storePage(request.url, response.clone()));
+    else if (signedOut(response)) event.waitUntil(purgePages());
     return response;
   } catch {
     // Too slow or no connection: show the last copy now, keep the fresh one if it still arrives.
-    event.waitUntil(network.then((r) => (keepable(r) ? storePage(request.url, r.clone()) : null)).catch(() => {}));
+    event.waitUntil(network.then((r) => (keepable(r) ? storePage(request.url, r.clone()) : signedOut(r) ? purgePages() : null)).catch(() => {}));
     const cached = await cachedPage(request.url);
     if (cached) return cached;
     const offline = await caches.match(OFFLINE_URL);
@@ -284,6 +348,10 @@ async function warm(urls) {
       // The whole page (slow connections stream it for a long time) within the limit.
       const page = await withDeadline(WARM_PAGE_TIMEOUT_MS, async (signal) => {
         const response = await fetch(url, { credentials: "same-origin", cache: "no-store", headers: { "x-sf-warm": "1" }, signal });
+        if (signedOut(response)) {
+          await purgePages();
+          return null;
+        }
         if (!keepable(response)) return null;
         const html = await response.text();
         const headers = new Headers(response.headers);
@@ -350,7 +418,7 @@ self.addEventListener("message", (event) => {
   } else if (data.type === "saved-pages") {
     event.waitUntil(savedPages().then((pages) => event.ports[0]?.postMessage({ pages })));
   } else if (data.type === "purge-pages") {
-    event.waitUntil(caches.delete(PAGES_CACHE));
+    event.waitUntil(purgePages());
   } else if (data.type === "connectivity") {
     appOffline = data.online === false;
   } else if (data.type === "skip-waiting") {

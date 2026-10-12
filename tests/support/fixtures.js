@@ -1,11 +1,27 @@
 import { toDateKey, addDaysToKey } from "@/lib/timezone";
-import { cookieJar } from "./request-context";
+import { cookieJar, headerJar } from "./request-context";
 import { signAccessToken } from "@/lib/auth";
 import { db } from "@/lib/prisma";
 import { registerBoss } from "@/actions/auth";
 import { createOrganization } from "@/actions/organization";
 
 export const hasDb = Boolean(process.env.TEST_DATABASE_URL);
+
+let registrations = 0;
+/**
+ * Registers a Boss from an address of his own, as real businesses do: registration is limited per
+ * address (5 an hour, counted in the shared database counters for the whole test run).
+ */
+async function register(data) {
+  const before = headerJar.get("x-forwarded-for");
+  registrations += 1;
+  headerJar.set("x-forwarded-for", `198.18.${(process.pid + registrations) % 250}.${registrations % 250}`);
+  try {
+    return await registerBoss(data);
+  } finally {
+    headerJar.set("x-forwarded-for", before);
+  }
+}
 
 let seq = 0;
 export const uid = (p = "t") => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -40,7 +56,7 @@ export async function headsChoseTheirPasswords(organizationId) {
 export async function setupOrganization(label = "Org") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `boss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `boss-${tag}@test.local`, password: "Baobab-2468" }));
   ok(
     await createOrganization({
       name: `${label} ${tag}`,
@@ -94,7 +110,7 @@ export function fails(res, pattern) {
 export async function setupVenueOrganization(label = "Venue") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `vboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `vboss-${tag}@test.local`, password: "Baobab-2468" }));
   ok(
     await createOrganization({
       name: `${label} ${tag}`,
@@ -120,7 +136,7 @@ export async function setupVenueOrganization(label = "Venue") {
 export async function setupStayOrganization(label = "Stay") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `sboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `sboss-${tag}@test.local`, password: "Baobab-2468" }));
   ok(
     await createOrganization({
       name: `${label} ${tag}`,
@@ -142,7 +158,7 @@ export async function setupStayOrganization(label = "Stay") {
 export async function setupRentalOrganization(label = "Rental") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `dboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `dboss-${tag}@test.local`, password: "Baobab-2468" }));
   ok(
     await createOrganization({
       name: `${label} ${tag}`,
@@ -167,7 +183,7 @@ export async function setupRentalOrganization(label = "Rental") {
 export async function setupPropertyOrganization(label = "Rentals") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `pboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `pboss-${tag}@test.local`, password: "Baobab-2468" }));
   ok(
     await createOrganization({
       name: `${label} ${tag}`,
@@ -194,7 +210,7 @@ export async function setupPropertyOrganization(label = "Rentals") {
 export async function setupTradeOrganization(label = "Trade") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `tboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `tboss-${tag}@test.local`, password: "Baobab-2468" }));
   const names = { SHOP: "Shop", BAR: "Bar", PRESSING: "Pressing", CAR_WASH: "Car wash", OTHER: "Salon" };
   ok(
     await createOrganization({
@@ -214,7 +230,7 @@ export async function setupTradeOrganization(label = "Trade") {
 export async function setupMakersOrganization(label = "Makers") {
   const tag = uid();
   cookieJar.clear();
-  ok(await registerBoss({ name: `Boss ${tag}`, email: `mboss-${tag}@test.local`, password: "Baobab-2468" }));
+  ok(await register({ name: `Boss ${tag}`, email: `mboss-${tag}@test.local`, password: "Baobab-2468" }));
   const names = { PRODUCTION: "Bakery", FARM: "Farm", SALON: "Salon" };
   ok(
     await createOrganization({

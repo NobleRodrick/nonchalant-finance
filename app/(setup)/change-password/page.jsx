@@ -1,15 +1,12 @@
 import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { safePath } from "@/lib/safe-path";
 import { ChangePasswordForm } from "@/components/auth/change-password-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Choose your password" };
 
-/** Only same-site relative paths are followed after the change. */
-function safePath(path) {
-  return typeof path === "string" && path.startsWith("/") && !path.startsWith("//") && !path.includes("\\") ? path : "/home";
-}
 
 /**
  * First sign-in with a temporary password (set by the Boss): the person chooses their own before

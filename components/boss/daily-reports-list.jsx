@@ -7,6 +7,7 @@ import { Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Field, Money, StatusBadge, inputClass, selectClass } from "@/components/kit/primitives";
 import { navigateTo } from "@/lib/navigation";
+import { neutralizeFormula } from "@/lib/export/table-export";
 
 export function DailyReportsList({ departments, filters, todayKey, rows }) {
   const router = useRouter();
@@ -19,7 +20,7 @@ export function DailyReportsList({ departments, filters, todayKey, rows }) {
   const exportCsv = () => {
     const head = ["Date", "Department", "Ref", "Status", "Version", "Sent by", "Money in", "Money out", "Result", "Cash expected", "Handed over", "Variance", "Stock value", "Debts owed"];
     const lines = rows.map((r) => [r.dateKey, r.department, r.referenceNo, r.status, r.version, r.submittedBy, r.totals.moneyIn, r.totals.moneyOut, r.totals.result, r.totals.cashExpected, r.totals.handedOver, r.totals.variance, r.totals.stockValue, r.totals.debtsClosing]);
-    const csv = [head, ...lines].map((l) => l.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const csv = [head, ...lines].map((l) => l.map((c) => `"${String(neutralizeFormula(c) ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: "text/csv" }));
     a.download = `daily-reports-${filters.from}-${filters.to}.csv`;

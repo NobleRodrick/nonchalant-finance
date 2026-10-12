@@ -247,6 +247,17 @@ enum DepartmentDomain {
   SALON
 }
 
+/// Attempt counters shared by every server instance (sign-in, registration, password change):
+/// one row per key, counting within a window (lib/security/limiter.js).
+model RateLimit {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+
+  @@index([resetAt])
+  @@map("rate_limits")
+}
+
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique // SHA-256 of the refresh token (the token itself is only in the cookie)
@@ -2754,7 +2765,8 @@ model TradeProduct {
   unit          String           @default("piece")
   kind          TradeProductKind @default(GOODS)
   salePrice     Int
-  costPrice     Int              @default(0) // average cost of one unit in stock
+  costPrice     Int              @default(0) // average cost of one unit in stock (stockValue ÷ quantity)
+  stockValue    Int              @default(0) // exact value of the stock held (Σ movement values)
   quantity      Float            @default(0)
   lowStock      Float            @default(0)
   packagingId   String? // bar: the returnable crate a bottle comes in

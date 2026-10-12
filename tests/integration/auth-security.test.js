@@ -4,6 +4,7 @@ import { cookieJar, headerJar } from "../support/request-context";
 import { fails, hasDb, loginAs, ok, uid } from "../support/fixtures";
 import { db } from "@/lib/prisma";
 import { BCRYPT_COST, getCurrentUser, hashToken } from "@/lib/auth";
+import { loginFailKey } from "@/lib/security/login-lock";
 import { loginUser, registerBoss, signOutEverywhere, updatePassword } from "@/actions/auth";
 import { createEmployee, createOrganization, resetEmployeePassword, updateEmployee } from "@/actions/organization";
 import { addDish } from "@/actions/menu-stock";
@@ -41,6 +42,25 @@ describe.skipIf(!hasDb)("sign-in security", () => {
   });
 
   afterAll(() => headerJar.set("x-forwarded-for", "127.0.0.1"));
+
+  /** The lock of an e-mail ends (as 15 minutes later). */
+  const expire = async (email) => {
+    await db.rateLimit.updateMany({ where: { key: { startsWith: loginFailKey(email) } }, data: { resetAt: new Date(Date.now() - 1000) } });
+    await db.user.updateMany({ where: { email }, data: { lockedUntil: new Date(Date.now() - 1000) } });
+  };
+  /** Runs a sign-in from another address. */
+  const withIp = async (ip, fn) => {
+    headerJar.set("x-forwarded-for", ip);
+    return fn();
+  };
+  /** A second account of the business (for comparing answers). */
+  const createEmployeeForLock = async () => {
+    await loginAs(boss.id);
+    const email = `sec-lock-${tag}@test.local`;
+    ok(await createEmployee({ name: "Lock Test", email, tempPassword: "Kola-13579", departmentIds: [deptId] }));
+    cookieJar.clear();
+    return email;
+  };
 
   it("a head created at setup has the title the Boss chose and signs in with the temporary password", async () => {
     expect(head).toMatchObject({ role: "HEAD", title: "Head chef", isActive: true, mustChangePassword: true });
@@ -108,31 +128,98 @@ describe.skipIf(!hasDb)("sign-in security", () => {
   });
 
   it("locks the account after 10 wrong passwords, even from many addresses, then unlocks by itself", async () => {
+    cookieJar.clear(); // a browser where the head never signed in
     for (let i = 0; i < 10; i++) {
       headerJar.set("x-forwarded-for", `10.1.${i}.${tag.length}`);
       await loginUser({ email: head.email, password: `Wrong-pass-${i}` });
     }
     headerJar.set("x-forwarded-for", "10.2.0.1");
-    fails(await loginUser({ email: head.email, password: "Okra-pepper-77" }), /Too many attempts/);
+    fails(await loginUser({ email: head.email, password: "Okra-pepper-77" }), /Too many attempts. Try again in 15 minute/);
     const locked = await db.user.findUnique({ where: { id: head.id } });
     expect(locked.lockedUntil > new Date()).toBe(true);
     expect(await db.auditEvent.count({ where: { entityId: head.id, action: "ACCOUNT_LOCKED" } })).toBe(1);
     // The lock ends on its own.
-    await db.user.update({ where: { id: head.id }, data: { lockedUntil: new Date(Date.now() - 1000) } });
+    await expire(head.email);
     ok(await loginUser({ email: head.email, password: "Okra-pepper-77" }));
     expect(await db.user.findUnique({ where: { id: head.id } })).toMatchObject({ failedLoginCount: 0, lockedUntil: null });
+    expect(await db.rateLimit.count({ where: { key: loginFailKey(head.email) } })).toBe(0);
+  });
+
+  it("wrong passwords sent at the same moment are all counted", async () => {
+    cookieJar.clear();
+    const email = `race-${tag}@test.local`;
+    headerJar.set("x-forwarded-for", "10.3.0.1");
+    // 8: what the address + account limit lets through in 15 minutes.
+    const res = await Promise.all(Array.from({ length: 8 }, (_, i) => loginUser({ email, password: `Wrong-${i}` })));
+    expect(res.map((r) => r.error)).toEqual(Array(8).fill("Invalid email or password."));
+    expect((await db.rateLimit.findUnique({ where: { key: loginFailKey(email) } })).count).toBe(8);
+  });
+
+  it("an e-mail without an account is locked the same way: the answers never tell whether it exists", async () => {
+    cookieJar.clear();
+    const nobody = `nobody-lock-${tag}@test.local`;
+    const answers = { known: [], unknown: [] };
+    const someone = await createEmployeeForLock();
+    for (let i = 0; i < 11; i++) {
+      headerJar.set("x-forwarded-for", `10.4.${i}.1`);
+      answers.unknown.push(fails(await loginUser({ email: nobody, password: `Wrong-${i}` })).error);
+      answers.known.push(fails(await loginUser({ email: someone, password: `Wrong-${i}` })).error);
+    }
+    expect(answers.unknown).toEqual(answers.known);
+    expect(answers.unknown.at(-1)).toMatch(/Too many attempts/);
+    expect(answers.unknown[0]).toBe("Invalid email or password.");
+  });
+
+  it("guessing elsewhere does not lock the person out of the browser they signed in on before", async () => {
+    cookieJar.clear();
+    headerJar.set("x-forwarded-for", "10.5.0.1");
+    ok(await loginUser({ email: head.email, password: "Okra-pepper-77" }));
+    const myBrowser = cookieJar.get("sf_device").value;
+    // Someone else, on another computer, locks the account.
+    cookieJar.clear();
+    for (let i = 0; i < 10; i++) await withIp(`10.6.${i}.1`, () => loginUser({ email: head.email, password: `Guess-${i}` }));
+    fails(await loginUser({ email: head.email, password: "Okra-pepper-77" }), /Too many attempts/);
+    // The head, on his own browser, still signs in; his own typos there are counted for it alone.
+    cookieJar.clear();
+    cookieJar.set("sf_device", myBrowser);
+    fails(await loginUser({ email: head.email, password: "Typo-1234" }), /Invalid email or password/);
+    ok(await loginUser({ email: head.email, password: "Okra-pepper-77" }));
+    // The lock still holds everywhere else.
+    cookieJar.clear();
+    fails(await loginUser({ email: head.email, password: "Okra-pepper-77" }), /Too many attempts/);
+    // A device token of another person does not help.
+    cookieJar.clear();
+    headerJar.set("x-forwarded-for", "10.5.0.2");
+    ok(await loginUser({ email: boss.email, password: bossPassword }));
+    const bossBrowser = cookieJar.get("sf_device").value;
+    cookieJar.clear();
+    cookieJar.set("sf_device", bossBrowser);
+    fails(await loginUser({ email: head.email, password: "Okra-pepper-77" }), /Too many attempts/);
+    await expire(head.email);
+  });
+
+  it("refuses an address that types many wrong passwords, whatever the e-mails", async () => {
+    cookieJar.clear();
+    headerJar.set("x-forwarded-for", "10.7.7.7");
+    for (let i = 0; i < 50; i++) await loginUser({ email: `spray-${i}-${tag}@test.local`, password: "Password-123" });
+    fails(await loginUser({ email: boss.email, password: bossPassword }), /Too many attempts/);
+    headerJar.set("x-forwarded-for", "10.7.7.8");
+    ok(await loginUser({ email: boss.email, password: bossPassword }));
   });
 
   it("the Boss's reset signs the person out at once, unlocks the account and asks for a new password", async () => {
     cookieJar.clear();
     ok(await loginUser({ email: head.email, password: "Okra-pepper-77" }));
     const token = cookieJar.get("sf_access_token").value;
-    await db.user.update({ where: { id: head.id }, data: { failedLoginCount: 7 } });
+    cookieJar.clear();
+    for (let i = 0; i < 10; i++) await withIp(`10.8.${i}.1`, () => loginUser({ email: head.email, password: `Guess-${i}` }));
+    fails(await loginUser({ email: head.email, password: "Okra-pepper-77" }), /Too many attempts/);
     await loginAs(boss.id);
     fails(await resetEmployeePassword({ employeeId: boss.id, tempPassword: "Mango-97531" }), /your own password/);
     fails(await resetEmployeePassword({ employeeId: head.id, tempPassword: "Password1" }), /too easy/);
     ok(await resetEmployeePassword({ employeeId: head.id, tempPassword: "Mango-97531" }));
-    expect(await db.user.findUnique({ where: { id: head.id } })).toMatchObject({ mustChangePassword: true, failedLoginCount: 0 });
+    expect(await db.user.findUnique({ where: { id: head.id } })).toMatchObject({ mustChangePassword: true, failedLoginCount: 0, lockedUntil: null });
+    expect(await db.rateLimit.count({ where: { key: loginFailKey(head.email) } })).toBe(0);
     expect(await db.refreshToken.count({ where: { userId: head.id } })).toBe(0);
     cookieJar.clear();
     cookieJar.set("sf_access_token", token);

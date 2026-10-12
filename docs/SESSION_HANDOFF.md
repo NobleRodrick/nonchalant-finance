@@ -2,6 +2,31 @@
 
 Where the Springer Finance work stands, so the next session can continue directly.
 
+## Review of Oct 2026: money in the books and security (12 Oct 2026)
+
+Full review: `docs/CODEBASE_REVIEW_2026-10.md`. Done in this round (each with tests in
+`tests/integration/books-correctness.test.js`, `tests/unit/stock-movement.test.js`, `auth-security.test.js`,
+`protect.test.js`, `csv-injection.test.js`, `safe-path.test.js`, `e2e-offline/offline.spec.mjs`):
+- **A1** a disputed handover posts nothing (rule skips it) and cannot then be confirmed if the drawer no longer
+  holds the cash; a confirmed one cannot be disputed.
+- **A2** a dated fact moved into the recent window replaces its entry (by source key) instead of crashing the
+  sync on the one-active-entry index.
+- **A3** goods bought with deductible VAT (Full accounting, VAT on) enter the stock without it (`shareVat`).
+- **A4** voided sales / purchases / tab lines / farm moves put the stock back on the record's own date and value.
+- **A5** handovers and cash voids are serialized per department (`lockDrawer`) and checked against both the
+  record's day and today: the drawer never goes below zero.
+- **A6** exact stock value on the product (`stockValue`): average = value ÷ quantity, the last unit takes the rest.
+- **S1** offline pages: kept with the session marker `sf_offline` (proxy echoes it as `x-sf-owner`); shown only
+  while the browser holds the same marker (checked by the worker via Cookie Store, and by a script in the page);
+  emptied when the server answers with the sign-in page. Service worker v4.
+- **S2** `lib/safe-path.js` (tabs/new lines/backslashes refused, must resolve to this site).
+- **S3** lockout counted atomically in `rate_limits` per e-mail (known or not: same answers), per known browser
+  (`sf_device` cookie: guessing elsewhere does not lock the person out), and per address (50 wrong / 15 min).
+- **S4** without `ARCJET_KEY`: shared Postgres counters + an error log in production.
+- **S5** CSV cells starting like a formula get a leading apostrophe (all three CSV writers).
+- Still open: a cash expense larger than the drawer is allowed (Neur Artisa −52 957 case); A7–A14, S6–S7, P1/P2.
+- Migrations `20261211090000_books_correctness`, `20261211100000_shared_limits` (additive).
+
 ## Heads keep the books; VAT on the Statements page (8 Oct 2026)
 
 - Live test on Neur Artisa (owner's OK): Full accounting + VAT 19.25 % built the books from the 6 records,

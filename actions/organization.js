@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { clear as clearLimit } from "@/lib/security/limiter";
+import { loginFailKey } from "@/lib/security/login-lock";
 import { db } from "@/lib/prisma";
 import { getCurrentUser, hashPassword, revokeSessions } from "@/lib/auth";
 import { runAction } from "@/lib/action";
@@ -400,6 +402,7 @@ export async function resetEmployeePassword(data) {
         data: { passwordHash: await hashPassword(data.tempPassword), mustChangePassword: true, failedLoginCount: 0, lockedUntil: null },
       });
       await recordAudit(tx, { user, action: "EMPLOYEE_PASSWORD_RESET", entityType: "User", entityId: employee.id });
+      await clearLimit(loginFailKey(employee.email), { client: tx });
     });
     return { id: employee.id };
   });

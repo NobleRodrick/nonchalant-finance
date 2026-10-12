@@ -356,3 +356,31 @@ test("the Boss confirms a handover while offline; it is sent when the connection
   await page.reload();
   await expect(page.getByRole("main").getByText("Nothing to confirm")).toBeVisible();
 });
+
+test("pages saved by a session that ended are never shown to the next person, even offline", async ({ page }) => {
+  await login(page, head.email, head.password);
+  await page.waitForURL(/\/d\//);
+  await swReady(page);
+  await page.goto(`/d/${deptId}/sell`);
+  await page.getByTestId("sync-status").click();
+  await expect(page.getByTestId("offline-pages")).toContainText("Every page of your departments opens on this computer", { timeout: 60_000 });
+  await page.keyboard.press("Escape");
+  await page.waitForLoadState("networkidle");
+
+  // The head leaves without signing out; the session ends (expired, signed out everywhere, or
+  // another person's session on this browser): the browser no longer holds his marker.
+  await stopServer();
+  await page.context().setOffline(true);
+  const url = new URL(page.url());
+  await page.context().addCookies([{ name: "sf_offline", value: "00000000-0000-4000-8000-000000000000", domain: url.hostname, path: "/" }]);
+  try {
+    await page.goto(`/d/${deptId}/sell`);
+    await expect(page.getByRole("heading", { name: /not saved on this computer yet|session on this computer has ended/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sell" })).toHaveCount(0);
+    // And none of his pages is kept any more.
+    await expect.poll(() => page.evaluate(async () => (await (await caches.open("sf-pages-v4")).keys()).length)).toBe(0);
+  } finally {
+    await page.context().setOffline(false);
+    await startServer();
+  }
+});

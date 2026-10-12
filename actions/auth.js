@@ -11,7 +11,9 @@ import {
   getCurrentUser,
   hashPassword,
   hashToken,
+  knownDevice,
   needsRehash,
+  rememberDevice,
   revokeSessions,
   startSession,
   verifyPassword,
@@ -19,10 +21,12 @@ import {
 import { recordAudit } from "@/lib/audit";
 import { runAction } from "@/lib/action";
 import { forbidden, invalid, unauthorized } from "@/lib/errors";
-import { resetRateLimit } from "@/lib/rate-limit";
-import { guard } from "@/lib/security/protect";
+import { forgive, guard } from "@/lib/security/protect";
+import { clear, hit, peek } from "@/lib/security/limiter";
+import { FAIL_WINDOW_MS, IP_FAIL_MAX, IP_WINDOW_MS, LOCK_AFTER, LOCK_MINUTES, ipFailKey, loginFailKey } from "@/lib/security/login-lock";
 import { accessibleDepartmentIds } from "@/lib/access";
 import { validatePasswordStrength } from "@/lib/password-utils";
+import { safePath } from "@/lib/safe-path";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -35,9 +39,16 @@ async function clientIp() {
   }
 }
 
-/** Wrong passwords in a row before the account is locked, and for how long. */
-const LOCK_AFTER = 10;
-const LOCK_MINUTES = 15;
+/**
+ * Sign-in lockout. Wrong passwords for an e-mail are counted in the shared database counters
+ * (every server instance, every attempt counted even when they arrive together): after LOCK_AFTER
+ * within FAIL_WINDOW_MS the e-mail is locked for LOCK_MINUTES. An e-mail without an account is
+ * counted and locked the same way, with the same answers, so the replies never tell whether an
+ * account exists. In a browser where the person signed in before (knownDevice) the attempts count
+ * for that browser alone: guessing elsewhere cannot lock the person out of their own computer.
+ * One address typing IP_FAIL_MAX wrong passwords (any e-mails) is refused for a while.
+ */
+const failKey = loginFailKey;
 
 const minutesLeft = (until) => Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000));
 
@@ -51,14 +62,6 @@ async function authAudit(client, user, action, after) {
   }
 }
 
-/** Only same-site relative paths may be used as post-login redirects. */
-function safeRedirect(path) {
-  if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
-    return "/home";
-  }
-  return path;
-}
-
 export async function loginUser(data) {
   return runAction("loginUser", async () => {
     const email = String(data?.email || "").toLowerCase().trim();
@@ -70,42 +73,46 @@ export async function loginUser(data) {
     if (!check.allowed) throw forbidden(check.message);
 
     const user = await db.user.findUnique({ where: { email } });
-    if (!user) {
-      // Same work and the same answer as a wrong password: the reply does not tell whether the e-mail has an account.
+    const device = user ? await knownDevice(user.id) : null;
+    const key = failKey(email, device);
+    // Locked: the same answer (and the same work) whether or not the e-mail has an account.
+    const [counted, fromIp] = await Promise.all([peek(key), peek(ipFailKey(ip))]);
+    const lockedUntil =
+      counted.count >= LOCK_AFTER ? counted.resetAt : fromIp.count >= IP_FAIL_MAX ? fromIp.resetAt : !device && user?.lockedUntil > new Date() ? user.lockedUntil : null;
+    if (lockedUntil) {
       await burnPasswordCheck(password);
-      throw unauthorized("Invalid email or password.");
+      throw forbidden(`Too many attempts. Try again in ${minutesLeft(lockedUntil)} minute(s).`);
     }
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      await burnPasswordCheck(password);
-      throw forbidden(`Too many attempts. Try again in ${minutesLeft(user.lockedUntil)} minute(s).`);
-    }
-    if (!(await verifyPassword(password, user.passwordHash))) {
-      // Counted in the database, so the lock holds on every server instance.
-      const failed = (user.lockedUntil ? 0 : user.failedLoginCount) + 1;
-      const lock = failed >= LOCK_AFTER;
-      await db.user.update({
-        where: { id: user.id },
-        data: lock ? { failedLoginCount: 0, lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60000) } : { failedLoginCount: failed, lockedUntil: null },
-      });
-      if (lock) await authAudit(db, user, "ACCOUNT_LOCKED", { minutes: LOCK_MINUTES, ip });
+    const passwordOk = user ? await verifyPassword(password, user.passwordHash) : await burnPasswordCheck(password);
+    if (!passwordOk) {
+      const res = await hit(key, { windowMs: FAIL_WINDOW_MS, limit: LOCK_AFTER, lockMs: LOCK_MINUTES * 60000 });
+      await hit(ipFailKey(ip), { windowMs: IP_WINDOW_MS });
+      if (user && !device) {
+        // Kept on the account too: the Boss sees it and his password reset unlocks it.
+        const lock = res.count >= LOCK_AFTER;
+        await db.user.update({ where: { id: user.id }, data: lock ? { failedLoginCount: res.count, lockedUntil: res.resetAt } : { failedLoginCount: { increment: 1 } } });
+        if (res.count === LOCK_AFTER) await authAudit(db, user, "ACCOUNT_LOCKED", { minutes: LOCK_MINUTES, ip });
+      }
       throw unauthorized("Invalid email or password.");
     }
     if (!user.isActive) throw forbidden("This account has been deactivated. Please contact your manager.");
 
-    if (check.key) resetRateLimit(check.key);
+    await forgive(check);
+    await clear(key);
     const signedIn = await db.user.update({
       where: { id: user.id },
       data: {
-        failedLoginCount: 0,
-        lockedUntil: null,
+        // Signing in on a known browser does not lift a lock set by guesses made elsewhere.
+        ...(device ? {} : { failedLoginCount: 0, lockedUntil: null }),
         lastLoginAt: new Date(),
         // Hashes made with an older, cheaper setting are upgraded now that the password is known.
         ...(needsRehash(user.passwordHash) ? { passwordHash: await hashPassword(password) } : {}),
       },
     });
     await startSession(signedIn);
+    await rememberDevice(signedIn.id);
 
-    const redirectTo = safeRedirect(data?.redirect);
+    const redirectTo = safePath(data?.redirect);
     return {
       user: { id: user.id, name: user.name, role: user.role },
       needsOnboarding: user.role === "ADMIN" && !user.organizationId,

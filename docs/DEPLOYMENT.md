@@ -151,6 +151,16 @@ Then deploy the application code.
    ledger balanced and immutable). Every business stays in Simple accounting until the Boss switches.
 2. Push, then resync Inngest (`ledger-nightly-sync` 02:30, `ledger-department-sync` on records).
 
+## Books correctness and security (`20261211090000_books_correctness`, `20261211100000_shared_limits`)
+
+Both additive. `trade_products.stockValue` (exact value of the stock held, filled from the movements by the
+migration) and `rate_limits` (attempt counters shared by every server instance). `npx prisma migrate deploy`,
+then push. No new environment variable. After the deploy:
+- the offline page cache starts again (service worker v4): each device saves its pages again on the next
+  visit; copies are kept with their session's marker (cookie `sf_offline`) and never shown to another session;
+- a production server without `ARCJET_KEY` logs `arcjet_key_missing` (error) once per instance; sign-in limits
+  then use the shared database counters (still no bot detection or Shield: set the key).
+
 ## Heads keep the books (`20261210090000_head_bookkeepers`)
 
 Additive: `company_members.scope` (COMPANY | DEPARTMENTS, default COMPANY — existing accountants keep the
@@ -210,7 +220,7 @@ Environment variables (Project → Settings → Environment Variables, Productio
 | `GEMINI_API_KEY`, `GEMINI_MODEL` | AI insights (optional) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | e-mails (optional) |
 | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | scheduled jobs |
-| `ARCJET_KEY` | abuse protection (Arcjet dashboard → your site → key). Shared rate limits for sign-in (8 per account and address / 15 min), registration (5 per address / hour, bots and disposable e-mails refused) and password changes, plus Arcjet Shield. Without it an in-memory limiter per server instance is used |
+| `ARCJET_KEY` | abuse protection (Arcjet dashboard → your site → key). Shared rate limits for sign-in (8 per account and address / 15 min), registration (5 per address / hour, bots and disposable e-mails refused) and password changes, plus Arcjet Shield. Without it the same per account and address limits are counted in Postgres (`rate_limits`, shared by every instance) and an error is logged at start; the account lockout (10 wrong passwords in an hour → 15 minutes, counted per e-mail, per known browser, and 50 wrong passwords per address / 15 min) always uses Postgres |
 | `ARCJET_MODE` | optional: `DRY_RUN` to only log what would be blocked (default `LIVE`) |
 | Clerk keys, `NODE_ENV` | remove: no longer used / set by Vercel |
 

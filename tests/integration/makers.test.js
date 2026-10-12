@@ -120,8 +120,9 @@ describe.skipIf(!hasDb)("production, farm, salon / gym", () => {
     const st = (dept) => buildStatements({ organizationId: o.org.id, departments: [dept], fromKey: `${m0}-01`, toKey: monthEnd(m0), compare: false });
     const bakery = await st(o.bakery);
     expect(bakery.income.salesGross).toBe(100 * 150);
-    // Cost of what left the stock: 100 loaves at their batch cost (the rest of the movements cancel out).
-    expect(bakery.income.stockChange).toBe(100 * Math.round(28000 / 190));
+    // Cost of what left the stock: 100 of the 190 loaves of the batch, at their exact share of its
+    // cost (not 100 × the rounded unit cost); the rest of the movements cancel out.
+    expect(bakery.income.stockChange).toBe(Math.round((100 * 28000) / 190));
     const farm = await st(o.farm);
     expect(farm.income.salesGross).toBe(10 * 2500 + 160000);
     const salon = await st(o.salon);

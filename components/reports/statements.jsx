@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { navigateTo } from "@/lib/navigation";
 import { PERIOD_PRESETS } from "@/lib/reports/periods";
 import { formatDateKey } from "@/lib/timezone";
+import { neutralizeFormula } from "@/lib/export/table-export";
 
 const PRESETS = PERIOD_PRESETS.map((p) => ({ id: p.key, label: p.label }));
 const TABS = [
@@ -23,7 +24,7 @@ const TABS = [
 ];
 
 function csvDownload(filename, rows) {
-  const csv = rows.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const csv = rows.map((r) => r.map((c) => `"${String(neutralizeFormula(c) ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);

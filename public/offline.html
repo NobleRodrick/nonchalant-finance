@@ -22,17 +22,29 @@
   <body>
     <main>
       <span class="badge">● No connection</span>
-      <h1>This page is not saved on this computer yet</h1>
-      <p>Pages open without internet once they were opened here with a connection. Everything you record offline is kept on this computer and sent when the connection is back.</p>
+      <h1 id="title">This page is not saved on this computer yet</h1>
+      <p id="why">Pages open without internet once they were opened here with a connection. Everything you record offline is kept on this computer and sent when the connection is back.</p>
       <p id="has-pages" hidden>Pages you can open now:</p>
       <ul id="pages"></ul>
       <button type="button" onclick="location.reload()">Try again</button>
     </main>
     <script>
       (async function () {
+        if (/[?&]ended=1/.test(location.search)) {
+          document.getElementById("title").textContent = "The session on this computer has ended";
+          document.getElementById("why").textContent = "The pages saved by the previous session are no longer shown. Sign in again when the connection is back.";
+          return;
+        }
         try {
-          const cache = await caches.open("sf-pages-v3");
-          const keys = await cache.keys();
+          // Only the pages saved by the session this browser holds (see lib/offline/owner.js).
+          const m = document.cookie.match(/(?:^|; )sf_offline=([^;]*)/);
+          const owner = m ? decodeURIComponent(m[1]) : null;
+          const cache = await caches.open("sf-pages-v4");
+          const keys = [];
+          for (const k of await cache.keys()) {
+            const r = await cache.match(k);
+            if (owner && r && r.headers.get("x-sf-owner") === owner) keys.push(k);
+          }
           const names = { "": "Department home", sell: "Sell", "menu-stock": "Menu & Stock", money: "Money in / out", debts: "Debts", "cash-handover": "Cash to Boss", report: "Today's report", history: "History" };
           const list = document.getElementById("pages");
           const items = keys
