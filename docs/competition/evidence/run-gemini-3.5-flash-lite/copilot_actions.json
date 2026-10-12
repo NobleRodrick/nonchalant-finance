@@ -1,0 +1,77 @@
+[
+  {
+    "id": "d38dc429-3309-4d51-b52f-032e8ef3f4ca",
+    "sessionId": "7bcfa9a5-09dd-4f3c-8c93-4c84fe3c4c65",
+    "organizationId": "d93f7f7b-b27a-4a6e-87ce-69a261d43896",
+    "userId": "3f42efa5-1446-40cf-8861-6b1aed4985f8",
+    "kind": "money.record",
+    "input": {
+      "type": "EXPENSE",
+      "amount": 12000,
+      "category": "bar-ice",
+      "description": "Ice from Glacière du Centre",
+      "counterparty": "Glacière du Centre",
+      "departmentId": "02dd683d-f0f8-462e-a69c-bc895ff86d2d",
+      "paymentMethod": "CASH"
+    },
+    "summary": "Record an expense of 12000 FCFA in Bar Le Carrefour: Ice and cooling — Ice from Glacière du Centre (paid to Glacière du Centre), CASH.",
+    "amount": 12000,
+    "status": "EXECUTED",
+    "result": {
+      "referenceNo": "E-0204",
+      "transactionId": "910b1e8f-12a1-45e8-8baa-98e965b9fc31"
+    },
+    "error": null,
+    "expiresAt": "2026-10-12T20:39:12.409Z",
+    "decidedAt": "2026-10-12T20:09:17.790Z",
+    "createdAt": "2026-10-12T20:09:16.399Z"
+  },
+  {
+    "id": "77eb7d58-e4c7-4609-a7cb-edd9decfde83",
+    "sessionId": "96172f08-f463-4cce-976b-619b5cbcfd16",
+    "organizationId": "d93f7f7b-b27a-4a6e-87ce-69a261d43896",
+    "userId": "3f42efa5-1446-40cf-8861-6b1aed4985f8",
+    "kind": "handover.record",
+    "input": {
+      "amount": 20000,
+      "departmentId": "02dd683d-f0f8-462e-a69c-bc895ff86d2d"
+    },
+    "summary": "Hand 20000 FCFA of Bar Le Carrefour's cash over to the Boss (the drawer should hold 72682 FCFA).",
+    "amount": 20000,
+    "status": "EXECUTED",
+    "result": {
+      "amount": 20000,
+      "handoverId": "8a861bda-85bd-4fa7-aeeb-d659ceb39a8b",
+      "referenceNo": "H-0029",
+      "transactionId": "baccb7a9-38a9-4eed-b65c-76ea64884606"
+    },
+    "error": null,
+    "expiresAt": "2026-10-12T20:39:17.964Z",
+    "decidedAt": "2026-10-12T20:09:21.301Z",
+    "createdAt": "2026-10-12T20:09:20.180Z"
+  },
+  {
+    "id": "29cfdb06-4a07-4ee2-a21f-6878bd0e8988",
+    "sessionId": "2a0d7630-e6eb-42b3-be3b-7c464cc09a3e",
+    "organizationId": "d93f7f7b-b27a-4a6e-87ce-69a261d43896",
+    "userId": "041cc991-2a64-4703-a94f-b7b3566e8900",
+    "kind": "money.record",
+    "input": {
+      "type": "EXPENSE",
+      "amount": 15000,
+      "category": "trade-council-tax",
+      "description": "Council tax (patente) paid to the Mairie",
+      "counterparty": "Mairie",
+      "departmentId": "ab327735-b61f-4d94-9014-973048deaf0f",
+      "paymentMethod": "CASH"
+    },
+    "summary": "Record an expense of 15000 FCFA in Boutique Mvog-Ada: Council taxes & licences (impôt libératoire, patente) — Council tax (patente) paid to the Mairie (paid to Mairie), CASH.",
+    "amount": 15000,
+    "status": "REJECTED",
+    "result": null,
+    "error": null,
+    "expiresAt": "2026-10-12T20:39:26.724Z",
+    "decidedAt": "2026-10-12T20:09:33.723Z",
+    "createdAt": "2026-10-12T20:09:32.467Z"
+  }
+]

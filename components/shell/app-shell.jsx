@@ -58,6 +58,7 @@ export async function AppShell({ user, children }) {
           { href: "/boss/daily-reports", label: "Daily reports", icon: "FileCheck2", badge: pending[0] },
           { href: "/boss/cash", label: "Cash received", icon: "HandCoins", badge: pending[1] },
           { href: "/statements", label: "Statements", icon: "LineChart" },
+          { href: "/copilot", label: "Finance Copilot", icon: "Sparkles" },
           { href: "/accounting", label: "Accounting", icon: "BookOpen", badge: pending[2] },
           { href: "/boss/settings", label: "Settings", icon: "Settings" },
         ]
@@ -66,6 +67,7 @@ export async function AppShell({ user, children }) {
         : [
           depts.length > 1 ? { href: "/my-departments", label: "All my departments", icon: "LayoutGrid" } : null,
           canStatements ? { href: "/statements", label: "Statements", icon: "LineChart" } : null,
+          { href: "/copilot", label: "Finance Copilot", icon: "Sparkles" },
           keepsBooks ? { href: "/accounting", label: "Accounting", icon: "BookOpen" } : null,
         ].filter(Boolean);
 

@@ -1,0 +1,289 @@
+[
+  {
+    "id": "S01",
+    "who": "boss",
+    "topic": "Business analysis",
+    "message": "How is the business doing this month compared with last month? Which department is weaker and why?",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Mme Ngono (sandbox)",
+      "role": "ADMIN"
+    },
+    "sessionId": "b0bbf9f3-0b64-4096-a0d8-7a84f8413612",
+    "reply": "### Business Performance Overview (1–12 Oct 2026 vs. 19–30 Sep 2026)\n\nOverall, the business generated **1,291,000 FCFA** in revenue (+10.3%), but total spending rose faster to **1,406,798 FCFA** (+26.9%). This resulted in a net loss of **-115,798 FCFA** for the current 12-day period, down from a **+61,254 FCFA** profit in the previous period (-289% change).\n\n* **Money In (Sales):** 1,291,000 FCFA\n* **Money Out:** 1,406,798 FCFA\n* **Net Result:** -115,798 FCFA (Profit Margin: -9%)\n* **Main Expense Drivers:** Total expenses jumped +122.8% to 360,451 FCFA, led by Rent (195,000 FCFA), Security & waiters (90,000 FCFA), and Ice & cooling (54,478 FCFA).\n\n---\n\n### Weaker Department: Bar Le Carrefour\n\n**Bar Le Carrefour** is the weaker department, running at a net loss of **-152,875 FCFA** (margin of -33.2%), worsening from a -49,511 FCFA loss in the prior period.\n\n* **Money In:** 460,650 FCFA (+20.0%)\n* **Money Out:** 613,525 FCFA (+41.6%)\n* **Net Result:** **-152,875 FCFA**\n\n#### Why it is weaker:\n1. **High Overhead & Operating Costs:** Expenses rose by +83.2% to **264,478 FCFA**, dominated by:\n   * **Rent:** 120,000 FCFA\n   * **Security & waiters:** 90,000 FCFA\n   * **Ice and cooling:** 54,478 FCFA\n2. **Cost Outpacing Income:** While sales increased by 20%, total outflows grew by 41.6%, pushing the bar deeper into the red.\n\n*By comparison, **Boutique Mvog-Ada** remained profitable with a net result of **+37,077 FCFA** (Money In: 830,350 FCFA, Money Out: 793,273 FCFA).*\n\n---\n\n### Recommended Next Steps\n1. **Review Bar Overheads:** Inspect recurring bar expenses—specifically staffing/security payments and cooling costs—to see if they can be optimized.\n2. **Track Stock vs. Sales at the Bar:** Compare stock used (233,705 FCFA) against sales (460,650 FCFA) to ensure proper pricing and minimize shrinkage or waste.",
+    "error": null,
+    "durationMs": 24701,
+    "tools": [
+      {
+        "type": "tool_call",
+        "tool": "list_departments",
+        "tier": "READ",
+        "args": {},
+        "reason": null
+      },
+      {
+        "type": "tool_call",
+        "tool": "get_financial_summary",
+        "tier": "READ",
+        "args": {
+          "toKey": "2026-10-12",
+          "fromKey": "2026-10-01"
+        },
+        "reason": null
+      },
+      {
+        "type": "tool_call",
+        "tool": "get_financial_summary",
+        "tier": "READ",
+        "args": {
+          "toKey": "2026-10-12",
+          "fromKey": "2026-10-01",
+          "departmentIds": [
+            "02dd683d-f0f8-462e-a69c-bc895ff86d2d"
+          ]
+        },
+        "reason": null
+      },
+      {
+        "type": "tool_call",
+        "tool": "get_financial_summary",
+        "tier": "READ",
+        "args": {
+          "toKey": "2026-10-12",
+          "fromKey": "2026-10-01",
+          "departmentIds": [
+            "ab327735-b61f-4d94-9014-973048deaf0f"
+          ]
+        },
+        "reason": null
+      }
+    ],
+    "modelCalls": 5,
+    "tokensIn": 15643,
+    "tokensOut": 896,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S02",
+    "who": "boss",
+    "topic": "Cash-flow management",
+    "message": "Will we run short of cash in the next 30 days? Besides the drawers we have 350 000 FCFA on Orange Money.",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Mme Ngono (sandbox)",
+      "role": "ADMIN"
+    },
+    "sessionId": "5afae2bf-64ac-4353-bd8c-56c507d12031",
+    "reply": "**No, you are not projected to run short of cash over the next 30 days.** \n\nHere is the breakdown based on your cash flow over the last 12 weeks:\n\n* **Starting cash today:** **562,223 FCFA** (212,223 FCFA in department drawers + 350,000 FCFA on Orange Money).\n* **Expected Scenario:**\n  * **Lowest balance:** **562,223 FCFA** (today). Cash balance grows continuously.\n  * **Projected balance in 30 days (Nov 11, 2026):** **2,102,311 FCFA**.\n* **Cautious Scenario** (15% less cash in, 10% higher expenses):\n  * Cash balance does not run out at any point.\n  * **Projected balance in 30 days:** **1,331,705 FCFA**.\n* **Daily Average:** ~123,145 FCFA cash in vs. ~71,397 FCFA cash out (net gain of **+51,749 FCFA/day**).\n\n**Suggested next steps:**\n1. Check that department heads regularly hand over drawer cash to keep records up to date.\n2. Re-evaluate your cash forecast if you plan any major one-time expenses or stock purchases in the coming weeks.",
+    "error": null,
+    "durationMs": 22219,
+    "tools": [
+      {
+        "type": "tool_call",
+        "tool": "forecast_cash_flow",
+        "tier": "READ",
+        "args": {
+          "days": 30,
+          "otherCash": 350000
+        },
+        "reason": null
+      }
+    ],
+    "modelCalls": 2,
+    "tokensIn": 4751,
+    "tokensOut": 327,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S03",
+    "who": "boss",
+    "topic": "Alerts",
+    "message": "Give me today's alerts for the whole business.",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Mme Ngono (sandbox)",
+      "role": "ADMIN"
+    },
+    "sessionId": "c3cb4a1c-ea58-4225-90dc-f0af04814e24",
+    "reply": "Here are today's business alerts as of **October 12, 2026**:\n\n### 🔴 High Priority\n* **Loss This Period:** **-115,798 FCFA** net result from October 1 to October 12, 2026.\n* **Old Customer Debts:** **393,050 FCFA** owed for more than 30 days (including **208,000 FCFA** overdue by more than 90 days).\n\n### 🟡 Medium Priority\n* **Unconfirmed Handovers:** **4 cash handover(s)** totaling **569,000 FCFA** waiting for your confirmation for 2 or more days.\n\n---\n\n### Recommended Next Steps\n1. **Confirm Cash Handovers:** Go to the Handovers section in the app to acknowledge and confirm receipt of the **569,000 FCFA**.\n2. **Recover Overdue Receivables:** Review receivables to follow up with long-standing debtors.\n3. **Check Financial Performance:** Look at your income statement for October to inspect department expenses and income sources.",
+    "error": null,
+    "durationMs": 7296,
+    "tools": [
+      {
+        "type": "tool_call",
+        "tool": "get_alerts",
+        "tier": "READ",
+        "args": {},
+        "reason": null
+      }
+    ],
+    "modelCalls": 2,
+    "tokensIn": 4047,
+    "tokensOut": 257,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S04",
+    "who": "boss",
+    "topic": "Financing-option matching",
+    "message": "I need 1 500 000 FCFA to restock the bar before the festive season and would repay over 6 months. What are my options?",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Mme Ngono (sandbox)",
+      "role": "ADMIN"
+    },
+    "sessionId": "89b62825-fec4-411a-9035-946762402b33",
+    "reply": "Based on your business's cash flow history over the past 6 months, your estimated monthly net cash is **1,552,456 FCFA**, giving you a comfortable repayment capacity of up to **620,982 FCFA/month** (40% limit). \n\nHere are the best options for your **1,500,000 FCFA** stock need over 6 months:\n\n---\n\n### **1. Microfinance Working-Capital Loan**\n* **Amount:** 1,500,000 FCFA\n* **Repayment:** ~**267,789 FCFA/month** over 6 months\n* **Estimated Interest/Cost:** ~106,734 FCFA (assumed 2%/month)\n* **Status:** Fits well within your monthly repayment capacity. You can use your transaction history in Springer Finance as proof of revenue.\n\n---\n\n### **2. Collect Open Receivables (No Cost / No Debt)**\n* **Amount Available:** **462,450 FCFA**\n* **Status:** Customers currently owe you 462,450 FCFA. Collecting these unpaid debts first would reduce the amount you need to borrow down to ~1,037,550 FCFA.\n\n---\n\n### **3. Rotating Savings Group (Njangi / Tontine)**\n* **Amount:** 1,500,000 FCFA\n* **Repayment:** **250,000 FCFA/month** over 6 months\n* **Status:** Fits your budget if you are an active member of a tontine or savings group.\n\n---\n\n### **4. Supplier Credit**\n* **Amount:** 1,500,000 FCFA\n* **Repayment:** ~**750,000 FCFA/month** over 2 months\n* **Status:** Negotiated directly with beverage/stock suppliers to defer payment over 30–60 days.\n\n---\n\n### **Next Steps**\n1. **Follow up on receivables:** Contact debtors owing the **462,450 FCFA** to lower your required financing amount.\n2. **Contact lenders/suppliers:** Present your business cash flow records from the app to apply for a microfinance loan or negotiate deferred payments with suppliers.\n\n*Disclaimer: These results are indicative only, based on assumed interest rates and automated affordability checks. This is not financial advice or a formal loan offer. Please confirm terms directly with lenders or suppliers.*",
+    "error": null,
+    "durationMs": 9238,
+    "tools": [
+      {
+        "type": "tool_call",
+        "tool": "match_financing_options",
+        "tier": "READ",
+        "args": {
+          "amount": 1500000,
+          "months": 6,
+          "purpose": "stock"
+        },
+        "reason": null
+      }
+    ],
+    "modelCalls": 2,
+    "tokensIn": 4516,
+    "tokensOut": 584,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S05",
+    "who": "brice",
+    "topic": "Receivables",
+    "message": "Which customers owe the shop money, and who should I call first?",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Brice Atangana",
+      "role": "HEAD"
+    },
+    "sessionId": "2d3a8149-87e3-470c-8bf7-1d61fbc6a4a9",
+    "reply": "Customers owe **Boutique Mvog-Ada** a total of **462,450 FCFA**, of which **393,050 FCFA** is overdue by more than 30 days.\n\n---\n\n### Outstanding Customer Debts\n\n| Customer | Total Debt | Oldest Unpaid Debt | Number of Debts |\n| :--- | :--- | :--- | :--- |\n| **M. Fouda** | 150,950 FCFA | 171 days | 12 |\n| **Kiosque Carrefour Obili** | 84,950 FCFA | 196 days | 5 |\n| **M. Nkodo** | 76,950 FCFA | 192 days | 3 |\n| **Mme Bilong** | 54,800 FCFA | 182 days | 4 |\n| **Mme Essomba** | 53,850 FCFA | 165 days | 3 |\n| **Restaurant Chez Tante Rose** | 40,950 FCFA | 170 days | 6 |\n\n---\n\n### Who to Call First\n\n1. **M. Fouda** (**150,950 FCFA**): Highest single balance (nearly a third of total debts) spread over 12 separate entries, with debt aging up to 171 days.\n2. **Kiosque Carrefour Obili** (**84,950 FCFA**) and **M. Nkodo** (**76,950 FCFA**): Both have the oldest debts (over 6 months / 190+ days old).\n\n---\n\n### Next Steps\n* **Call M. Fouda first** to negotiate a payment plan or request immediate settlement for the oldest balances.\n* **Pause further credit sales** to customers with debts over 90 days until previous balances are partially or fully settled.",
+    "error": null,
+    "durationMs": 10735,
+    "tools": [
+      {
+        "type": "tool_call",
+        "tool": "list_departments",
+        "tier": "READ",
+        "args": {},
+        "reason": null
+      },
+      {
+        "type": "tool_call",
+        "tool": "get_receivables",
+        "tier": "READ",
+        "args": {
+          "departmentIds": [
+            "ab327735-b61f-4d94-9014-973048deaf0f"
+          ]
+        },
+        "reason": null
+      }
+    ],
+    "modelCalls": 3,
+    "tokensIn": 6499,
+    "tokensOut": 496,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S06",
+    "who": "sandrine",
+    "topic": "Action with approval (expense)",
+    "message": "Record 12 000 FCFA paid in cash today to Glacière du Centre for ice.",
+    "decide": "approve",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Sandrine Mballa",
+      "role": "HEAD"
+    },
+    "sessionId": null,
+    "reply": null,
+    "error": "The copilot could not reach the AI service. Try again in a moment.",
+    "durationMs": 14611,
+    "tools": [],
+    "modelCalls": 0,
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S07",
+    "who": "sandrine",
+    "topic": "Action with approval (cash handover)",
+    "message": "Prepare a handover of 20 000 FCFA from the bar's drawer to the Boss.",
+    "decide": "approve",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Sandrine Mballa",
+      "role": "HEAD"
+    },
+    "sessionId": null,
+    "reply": null,
+    "error": "The copilot could not reach the AI service. Try again in a moment.",
+    "durationMs": 29413,
+    "tools": [],
+    "modelCalls": 0,
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S08",
+    "who": "boss",
+    "topic": "Action with approval (cash request)",
+    "message": "Ask the shop and the bar to bring today's cash.",
+    "decide": "approve",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Mme Ngono (sandbox)",
+      "role": "ADMIN"
+    },
+    "sessionId": null,
+    "reply": null,
+    "error": "The copilot could not reach the AI service. Try again in a moment.",
+    "durationMs": 13709,
+    "tools": [],
+    "modelCalls": 0,
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "proposals": [],
+    "decisions": []
+  },
+  {
+    "id": "S09",
+    "who": "brice",
+    "topic": "Proposal rejected by the person",
+    "message": "Record 15 000 FCFA cash for the council tax (patente) paid today to the Mairie.",
+    "decide": "reject",
+    "model": "gemini-3.5-flash",
+    "user": {
+      "name": "Brice Atangana",
+      "role": "HEAD"
+    },
+    "sessionId": null,
+    "reply": null,
+    "error": "The copilot could not reach the AI service. Try again in a moment.",
+    "durationMs": 14056,
+    "tools": [],
+    "modelCalls": 0,
+    "tokensIn": 0,
+    "tokensOut": 0,
+    "proposals": [],
+    "decisions": []
+  }
+]

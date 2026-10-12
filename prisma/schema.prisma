@@ -19,6 +19,7 @@ model Organization {
   currency           String                @default("FCFA")
   timezone           String                @default("Africa/Douala")
   departments        Department[]
+  copilotSessions    CopilotSession[]
   users              User[]
   accounts           Account[]
   transactions       Transaction[]
@@ -165,6 +166,7 @@ model User {
   accounts          Account[]
   notifications     Notification[]
   refreshTokens     RefreshToken[]
+  copilotSessions   CopilotSession[]
   dailyStockRecords DailyStockRecord[]
   stockItems        DepartmentStockItem[]
   stockMovements    StockMovement[]
@@ -245,6 +247,68 @@ enum DepartmentDomain {
   PRODUCTION
   FARM
   SALON
+}
+
+/// Finance Copilot (lib/copilot): one conversation of a person with the agent. `history` keeps the
+/// model's turns (trimmed) so a conversation continues; every step is also in copilot_events.
+model CopilotSession {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String?
+  history        Json            @default("[]")
+  events         CopilotEvent[]
+  actions        CopilotAction[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([userId, updatedAt])
+  @@map("copilot_sessions")
+}
+
+/// Audit trail of the agent: the person's message, each model call, each tool call and its
+/// result, each proposal, approval, refusal and execution (append-only).
+model CopilotEvent {
+  id         String         @id @default(uuid())
+  sessionId  String
+  session    CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  turn       Int
+  type       String // user_message | model_call | tool_call | tool_result | tool_refused | proposal | approval | rejection | execution | execution_failed | reply | limit
+  tool       String?
+  tier       String? // READ | PROPOSE
+  payload    Json
+  latencyMs  Int?
+  tokensIn   Int?
+  tokensOut  Int?
+  createdAt  DateTime        @default(now())
+
+  @@index([sessionId, createdAt])
+  @@map("copilot_events")
+}
+
+/// A change the agent proposed. Nothing is written until the person approves it; the approved
+/// operation then runs through executeOperation as that person (same rights, checks and audit).
+model CopilotAction {
+  id             String         @id @default(uuid())
+  sessionId      String
+  session        CopilotSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  organizationId String
+  userId         String
+  kind           String // operation kind (money.record, cash.request, handover.record)
+  input          Json
+  summary        String
+  amount         Int?
+  status         String         @default("PROPOSED") // PROPOSED | APPROVED | EXECUTED | FAILED | REJECTED | EXPIRED
+  result         Json?
+  error          String?
+  expiresAt      DateTime
+  decidedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@index([userId, status])
+  @@map("copilot_actions")
 }
 
 /// Attempt counters shared by every server instance (sign-in, registration, password change):

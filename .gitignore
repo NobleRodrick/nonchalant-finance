@@ -61,3 +61,7 @@ next-env.d.ts
 demo.json
 load-seed.json
 isolation-probe.jsonl
+
+# Finance Copilot sandbox: generated bundle and local evidence runs
+/dist-sandbox/
+/sandbox-out/

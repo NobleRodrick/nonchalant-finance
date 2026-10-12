@@ -151,6 +151,12 @@ Then deploy the application code.
    ledger balanced and immutable). Every business stays in Simple accounting until the Boss switches.
 2. Push, then resync Inngest (`ledger-nightly-sync` 02:30, `ledger-department-sync` on records).
 
+## Finance Copilot (`20261212090000_finance_copilot`)
+
+Additive: `copilot_sessions`, `copilot_events` (audit trail), `copilot_actions` (proposals awaiting approval).
+`npx prisma migrate deploy`, then push. Uses `GEMINI_API_KEY` (already set for AI insights); `COPILOT_MODEL`
+optional. Page: `/copilot` (Boss and heads).
+
 ## Books correctness and security (`20261211090000_books_correctness`, `20261211100000_shared_limits`)
 
 Both additive. `trade_products.stockValue` (exact value of the stock held, filled from the movements by the
@@ -217,7 +223,8 @@ Environment variables (Project → Settings → Environment Variables, Productio
 | `DIRECT_URL` | Supabase session pooler or direct connection (port 5432); used by migrations |
 | `JWT_SECRET` | the same ≥ 32-character secret as in your `.env` (**required**: without it every page fails in production) |
 | `NEXT_PUBLIC_APP_URL` | your Vercel address, e.g. `https://your-app.vercel.app` (links in e-mails) |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | AI insights (optional) |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | AI insights and the Finance Copilot (optional; without the key the Copilot page says it is not configured) |
+| `COPILOT_MODEL` | optional, model of the Finance Copilot agent (default `gemini-3.5-flash`; Google retired `gemini-2.5-flash` for new keys in Oct 2026) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | e-mails (optional) |
 | `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` | scheduled jobs |
 | `ARCJET_KEY` | abuse protection (Arcjet dashboard → your site → key). Shared rate limits for sign-in (8 per account and address / 15 min), registration (5 per address / hour, bots and disposable e-mails refused) and password changes, plus Arcjet Shield. Without it the same per account and address limits are counted in Postgres (`rate_limits`, shared by every instance) and an error is logged at start; the account lockout (10 wrong passwords in an hour → 15 minutes, counted per e-mail, per known browser, and 50 wrong passwords per address / 15 min) always uses Postgres |

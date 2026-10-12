@@ -1,0 +1,60 @@
+{
+  "ranAt": "2026-10-12T20:16:53.763Z",
+  "today": "2026-10-12",
+  "business": "Ngono & Fils (sandbox)",
+  "departments": [
+    "Boutique Mvog-Ada",
+    "Bar Le Carrefour"
+  ],
+  "seed": null,
+  "counts": {
+    "transactions": 3538,
+    "sales": 3064,
+    "debtsOpen": 34,
+    "handovers": 57,
+    "copilotSessions": 16,
+    "copilotEvents": 145,
+    "copilotActions": 3
+  },
+  "created": [
+    {
+      "actionId": "d38dc429-3309-4d51-b52f-032e8ef3f4ca",
+      "kind": "money.record",
+      "record": {
+        "referenceNo": "E-0204",
+        "type": "EXPENSE",
+        "amount": "12000",
+        "category": "bar-ice",
+        "description": "Ice from Glacière du Centre",
+        "counterparty": "Glacière du Centre",
+        "paymentMethod": "CASH",
+        "createdAt": "2026-10-12T20:09:17.876Z",
+        "departmentId": "02dd683d-f0f8-462e-a69c-bc895ff86d2d",
+        "userId": "3f42efa5-1446-40cf-8861-6b1aed4985f8"
+      }
+    },
+    {
+      "actionId": "77eb7d58-e4c7-4609-a7cb-edd9decfde83",
+      "kind": "handover.record",
+      "record": {
+        "referenceNo": "H-0029",
+        "type": "CASH_HANDOVER",
+        "amount": "20000",
+        "category": "cash-handover",
+        "description": "Cash handed to Boss",
+        "counterparty": "Boss",
+        "paymentMethod": "CASH",
+        "createdAt": "2026-10-12T20:09:21.437Z",
+        "departmentId": "02dd683d-f0f8-462e-a69c-bc895ff86d2d",
+        "userId": "3f42efa5-1446-40cf-8861-6b1aed4985f8"
+      }
+    }
+  ],
+  "users": {
+    "boss": "boss@sandbox.springer.test",
+    "heads": [
+      "brice@sandbox.springer.test",
+      "sandrine@sandbox.springer.test"
+    ]
+  }
+}

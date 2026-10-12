@@ -23,6 +23,8 @@ const eslintConfig = defineConfig([
     "playwright-report/**",
     "test-results/**",
     ".scratch/**",
+    "dist-sandbox/**",
+    "sandbox-out/**",
   ]),
 ]);
 
