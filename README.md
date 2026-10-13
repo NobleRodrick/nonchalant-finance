@@ -185,3 +185,17 @@ prisma/             schema.prisma and migrations
 tests/, e2e/        Vitest (unit + integration) and Playwright suites; e2e-offline/ (production build, server stopped)
 docs/               plan, implementation status, deployment guide
 ```
+
+## FinTechathon 2026 submission
+
+This repository is an entry in the 2026 Shenzhen International FinTech Competition (International Track,
+Topic E: SME Finance Copilot). The submission documents are in [`docs/competition/`](docs/competition/):
+technical documentation, pitch deck, security self-assessment and agent execution evidence, with the raw
+audit trail of the sandbox run. Deployment: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). Tests: see "Tests" above
+and section 11 of the technical documentation.
+
+## License
+
+Copyright (c) 2025-2026 Alloh Nkefor Rodrick. **All rights reserved.** This code is published for viewing and
+for evaluation by the FinTechathon organizers and judges only; it may not be copied, reused or deployed without
+written permission. See [`LICENSE`](LICENSE).
